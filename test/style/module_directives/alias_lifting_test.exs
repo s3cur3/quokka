@@ -728,4 +728,57 @@ defmodule Quokka.Style.ModuleDirectives.AliasLiftingTest do
       )
     end
   end
+
+  describe "alias lifting within use" do
+    test "lifts aliases when use is after alias" do
+      Quokka.Config.set_for_test!(:lift_alias_frequency, 0)
+      Quokka.Config.set_for_test!(:strict_module_layout_order, [:alias, :use])
+
+      assert_style(
+        """
+        defmodule MyApp.Schemas.MySchema do
+          alias MyApp.Schemas.MySchema
+
+          use MyApp.Schemas.Schema,
+            derive: [
+              :id,
+              name: &MySchema.encode_name/1
+            ]
+        end
+        """
+      )
+    end
+
+    test "doesn't lift aliases when use is before alias" do
+      Quokka.Config.set_for_test!(:lift_alias_frequency, 0)
+      Quokka.Config.set_for_test!(:strict_module_layout_order, [:use, :alias])
+
+      assert_style(
+        """
+        defmodule MyApp.Schemas.MySchema do
+          alias MyApp.Schemas.MySchema
+
+          use MyApp.Schemas.Schema,
+            derive: [
+              :id,
+              name: &MySchema.encode_name/1
+            ]
+        end
+        """,
+        """
+        defmodule MyApp.Schemas.MySchema do
+          use MyApp.Schemas.Schema,
+            derive: [
+              :id,
+              name: &MyApp.Schemas.MySchema.encode_name/1
+            ]
+
+          alias MyApp.Schemas.MySchema
+        end
+        """
+      )
+
+      Quokka.Config.set_for_test!(:strict_module_layout_order, [:shortdoc, :moduledoc, :behaviour, :use, :import, :alias, :require])
+    end
+  end
 end
