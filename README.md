@@ -66,13 +66,18 @@ Quokka can be configured in your `.formatter.exs` file
   quokka: [
     inefficient_function_rewrites: true | false,
     reorder_configs: true | false,
-    rewrite_deprecations: true | false
+    rewrite_deprecations: true | false,
+    files: %{
+      included: ["lib/", ...],
+      excluded: ["lib/example.ex", ...]
+    }
   ]
 ]
 ```
 
 Quokka has several configuration options:
 
+- `:files`, which controls which files Quokka will format. This is `%{included: [], excluded: []}` by default.
 - `:inefficient_function_rewrites`, which controls whether or not Quokka will rewrite deprecated functions to their new form. This is true by default.
 - `:reorder_configs`, which controls whether or not the configs in your `config/*.exs` files are alphabetized. This is true by default.
 - `:rewrite_deprecations`, which controls whether or not Quokka will rewrite deprecated functions to their new form. This is true by default.

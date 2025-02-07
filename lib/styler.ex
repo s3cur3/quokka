@@ -22,7 +22,6 @@ defmodule Quokka do
   @doc false
   def style({ast, comments}, file, opts) do
     on_error = opts[:on_error] || :log
-    Quokka.Config.set(opts)
     zipper = Zipper.zip(ast)
 
     {{ast, _}, comments} =
@@ -69,12 +68,18 @@ defmodule Quokka do
     file = formatter_opts[:file]
     styler_opts = formatter_opts[:quokka] || []
 
-    {ast, comments} =
-      input
-      |> string_to_quoted_with_comments(to_string(file))
-      |> style(file, styler_opts)
+    Quokka.Config.set(styler_opts)
 
-    quoted_to_string(ast, comments, formatter_opts)
+    if Quokka.Config.allowed_directory?(file) do
+      {ast, comments} =
+        input
+        |> string_to_quoted_with_comments(to_string(file))
+        |> style(file, styler_opts)
+
+      quoted_to_string(ast, comments, formatter_opts)
+    else
+      input
+    end
   end
 
   @doc false
