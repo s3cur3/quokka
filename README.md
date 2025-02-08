@@ -4,33 +4,17 @@
 
 # Quokka
 
-Quokka is an Elixir formatter plugin that's combination of `mix format` and `mix credo`, except instead of telling
-you what's wrong, it just rewrites the code for you to fit its style rules.
+<img src="docs/assets/quokka.png" alt="A happy quokka with style" width="300"/>  
 
-Quokka is a fork of [Styler](https://github.com/adobe/styler) that checks the credo config to determine which rules to rewrite.
+Quokka is an Elixir formatter plugin that's combination of `mix format` and `mix credo`, except instead of telling you what's wrong, it just rewrites the code for you. Quokka is a fork of [Styler](https://github.com/adobe/styler) that checks the Credo config to determine which rules to rewrite. Many common, non-controversial Credo style rules are rewritten automatically, while the controversial Credo style rules are rewritten based on your Credo configuration so you can customize your style.
 
-## Features
-
-- auto-fixes [many credo rules](docs/credo.md), meaning you can turn them off to speed credo up
-- [keeps a strict module layout](docs/module_directives.md#directive-organization)
-  - alphabetizes module directives
-- [extracts repeated aliases](docs/module_directives.md#alias-lifting)
-- [makes your pipe chains pretty as can be](docs/pipes.md)
-  - pipes and unpipes function calls based on the number of calls
-  - optimizes standard library calls (`a |> Enum.map(m) |> Enum.into(Map.new)` => `Map.new(a, m)`)
-- replaces strings with sigils when the string has many escaped quotes
-- [reorders configuration in config files](docs/configs.md)
-- [expands multi-alias/import statements](docs/module_directives.md#directive-expansion)
-- [enforces consistent function call parentheses](docs/function_calls.md)
-- [ensures consistent spacing around operators](docs/operators.md)
-- [formats documentation comments](docs/docs.md)
-- [removes unnecessary parentheses](docs/parentheses.md)
-- [simplifies boolean expressions](docs/boolean_simplification.md)
-- [enforces consistent module attribute usage](docs/module_attributes.md)
-- [formats and organizes typespecs](docs/typespecs.md)
-- ... and many more style improvements
-
-[See our Rewrites documentation on hexdocs](https://hexdocs.pm/quokka/styles.html)
+> #### WARNING {: .warning}
+> Quokka can change the behavior of your program!
+> 
+> In some cases, this can introduce bugs. It goes without saying, but look over your changes before committing to main :)
+> 
+> We recommend making changes in small chunks until all of the more dangerous
+> changes has been safely committed to the codebase
 
 ## Installation
 
@@ -54,11 +38,13 @@ Then add `Quokka` as a plugin to your `.formatter.exs` file
 
 And that's it! Now when you run `mix format` you'll also get the benefits of Quokka's Stylish Stylings.
 
-**Speed**: Expect the first run to take some time as `Quokka` rewrites violations of styles and bottlenecks on disk I/O. Subsequent formats formats won't take noticeably more time.
+**Speed**: Expect the first run to take some time as `Quokka` rewrites violations of styles and bottlenecks on disk I/O. Subsequent formats will take noticeably less time.
 
 ### Configuration
 
-Quokka can be configured in your `.formatter.exs` file
+Quokka primarily relies on the configurations of `.formatter.exs` and `Credo` (if available).
+However, there are some Quokka specific options that can also be specified
+in `.formatter.exs` to fine tune your setup:
 
 ```elixir
 [
@@ -74,23 +60,77 @@ Quokka can be configured in your `.formatter.exs` file
   ]
 ]
 ```
+| Option | Description | Default |
+| --- | --- | --- |
+| `:files` | Quokka gets files from `.formatter.exs[:inputs]`. However, in some cases you may need to selectively exclude/include files you wish to still run in `mix format`, but have different behavior with Quokka. | `%{included: [], excluded: []}` (all files included, none excluded) |
+| `:inefficient_function_rewrites` | Rewrite inefficient functions to more efficient form | `true` |
+| `:reorder_configs` | Alphabetize `config` by key in `config/*.exs` files | `true` |
+| `:rewrite_deprecations` | Rewrite deprecated functions to their new form | `true` |
 
-Quokka has several configuration options:
+## Credo inspired rewrites
 
-- `:files`, which controls which files Quokka will format. This is `%{included: [], excluded: []}` by default.
-- `:inefficient_function_rewrites`, which controls whether or not Quokka will rewrite deprecated functions to their new form. This is true by default.
-- `:reorder_configs`, which controls whether or not the configs in your `config/*.exs` files are alphabetized. This is true by default.
-- `:rewrite_deprecations`, which controls whether or not Quokka will rewrite deprecated functions to their new form. This is true by default.
+The power of Quokka comes from utilizing the opinions you've already made with
+Credo and going one step further to attempt rewriting them for you.
 
-## WARNING: Quokka can change the behaviour of your program!
+Below is a general overall of many Credo checks Quokka attempts to handle and
+some additional useful details such as links to detailed documentation and if
+the check can be configured further for fine tuning.
 
-In some cases, this can introduce bugs. It goes without saying, but look over your changes before committing to main :)
+> #### `:controversial` Credo checks {: .tip}
+> 
+> Quokka allows all `:controversial` Credo checks to be configurable. In many cases,
+> a Credo check can also be disabled to prevent rewriting.
 
-Some ways Quokka can change your program:
+<!-- tabs-open -->
 
-- [`with` statement rewrites](https://github.com/adobe/elixir-styler/issues/186)
-- [config file sorting](https://hexdocs.pm/quokka/mix_configs.html#this-can-break-your-program)
-- and likely other ways. stay safe out there!
+### Credo.Check.Consistency
+
+| Credo Check | Rewrite Description | Documentation | Configurable |
+|-------------|-------------------|---------------|--------------|
+| [`.MultiAliasImportRequireUse`](https://hexdocs.pm/credo/Credo.Check.Consistency.MultiAliasImportRequireUse.html) | Expands multi-alias/import statements | [Directive Expansion](docs/module_directives.md#directive-expansion) | |
+| [`.ParameterPatternMatching`](https://hexdocs.pm/credo/Credo.Check.Consistency.ParameterPatternMatching.html) | Enforces consistent parameter pattern matching | [Parameter Pattern Matching](docs/styles.md#parameter-pattern-matching-consistency) | |
+
+### Credo.Check.Design
+
+| Credo Check | Rewrite Description | Documentation | Configurable |
+|-------------|-------------------|---------------|--------------|
+| [`.AliasUsage`](https://hexdocs.pm/credo/Credo.Check.Design.AliasUsage.html) | Extracts repeated aliases | [Alias Lifting](docs/module_directives.md#alias-lifting) | ✓ |
+
+### Credo.Check.Readability
+
+| Credo Check | Rewrite Description | Documentation | Configurable |
+|-------------|-------------------|---------------|--------------|
+| [`.AliasOrder`](https://hexdocs.pm/credo/Credo.Check.Readability.AliasOrder.html) | Alphabetizes module directives | [Module Directives](docs/module_directives.md#directive-organization) | ✓ |
+| [`.BlockPipe`](https://hexdocs.pm/credo/Credo.Check.Readability.BlockPipe.html) | (En\|dis)ables piping into blocks | [Pipe Chains](docs/pipes.md#pipe-start) | ✓ |
+| [`.LargeNumbers`](https://hexdocs.pm/credo/Credo.Check.Readability.LargeNumbers.html) | Formats large numbers with underscores | [Number Formatting](docs/styles.md#large-base-10-numbers) | ✓ |
+| [`.MaxLineLength`](https://hexdocs.pm/credo/Credo.Check.Readability.MaxLineLength.html) | Enforces maximum line length | [Line Length](docs/styles.md#line-length) | ✓ |
+| [`.MultiAlias`](https://hexdocs.pm/credo/Credo.Check.Readability.MultiAlias.html) | Expands multi-alias statements | [Module Directives](docs/module_directives.md#directive-expansion) | ✓ |
+| [`.OneArityFunctionInPipe`](https://hexdocs.pm/credo/Credo.Check.Readability.OneArityFunctionInPipe.html) | Optimizes pipe chains with single arity functions | [Pipe Chains](docs/pipes.md#add-parenthesis-to-function-calls-in-pipes) | |
+| [`.ParenthesesOnZeroArityDefs`](https://hexdocs.pm/credo/Credo.Check.Readability.ParenthesesOnZeroArityDefs.html) | Enforces consistent function call parentheses | [Function Calls](docs/styles.md#add-parenthesis-to-0-arity-functions-and-macro-definitions) | ✓ |
+| [`.PipeIntoAnonymousFunctions`](https://hexdocs.pm/credo/Credo.Check.Readability.PipeIntoAnonymousFunctions.html) | Optimizes pipes with anonymous functions | [Pipe Chains](docs/pipes.md#add-then-2-when-defining-and-calling-anonymous-functions-in-pipes) | |
+| [`.PreferImplicitTry`](https://hexdocs.pm/credo/Credo.Check.Readability.PreferImplicitTry.html) | Simplifies try expressions | [Control Flow Macros](docs/styles.md#implicit-try) | |
+| [`.SinglePipe`](https://hexdocs.pm/credo/Credo.Check.Readability.SinglePipe.html) | Optimizes pipe chains | [Pipe Chains](docs/pipes.md#unpiping-single-pipes) | ✓ |
+| [`.StringSigils`](https://hexdocs.pm/credo/Credo.Check.Readability.StringSigils.html) | Replaces strings with sigils | [Strings to Sigils](docs/styles.md#strings-to-sigils) | |
+| [`.StrictModuleLayout`](https://hexdocs.pm/credo/Credo.Check.Readability.StrictModuleLayout.html) | Enforces strict module layout | [Module Directives](docs/module_directives.md#directive-organization) | ✓ |
+| [`.UnnecessaryAliasExpansion`](https://hexdocs.pm/credo/Credo.Check.Readability.UnnecessaryAliasExpansion.html) | Removes unnecessary alias expansions | [Module Directives](docs/module_directives.md#directive-expansion) | |
+| [`.WithSingleClause`](https://hexdocs.pm/credo/Credo.Check.Readability.WithSingleClause.html) | Simplifies with statements | [Control Flow Macros](docs/control_flow_macros.md#with) | |
+
+### Credo.Check.Refactor
+
+| Credo Check | Rewrite Description | Documentation | Configurable |
+|-------------|-------------------|---------------|--------------|
+| [`.CondStatements`](https://hexdocs.pm/credo/Credo.Check.Refactor.CondStatements.html) | Simplifies boolean expressions | [Control Flow Macros](docs/control_flow_macros.md#cond) | |
+| [`.FilterCount`](https://hexdocs.pm/credo/Credo.Check.Refactor.FilterCount.html) | Optimizes filter + count operations | [Styles](docs/styles.md#filter-count) | |
+| [`.MapInto`](https://hexdocs.pm/credo/Credo.Check.Refactor.MapInto.html) | Optimizes map + into operations | [Styles](docs/styles.md#map-into) | |
+| [`.MapJoin`](https://hexdocs.pm/credo/Credo.Check.Refactor.MapJoin.html) | Optimizes map + join operations | [Styles](docs/styles.md#map-join) | |
+| [`.NegatedConditionsInUnless`](https://hexdocs.pm/credo/Credo.Check.Refactor.NegatedConditionsInUnless.html) | Simplifies negated conditions in unless | [Control Flow Macros](docs/control_flow_macros.md#if-and-unless) | |
+| [`.NegatedConditionsWithElse`](https://hexdocs.pm/credo/Credo.Check.Refactor.NegatedConditionsWithElse.html) | Simplifies negated conditions with else | [Control Flow Macros](docs/control_flow_macros.md#negation-inversion) | |
+| [`.PipeChainStart`](https://hexdocs.pm/credo/Credo.Check.Refactor.PipeChainStart.html) | Optimizes pipe chain start | [Pipe Chains](docs/pipes.md#pipe-start) | |
+| [`.RedundantWithClauseResult`](https://hexdocs.pm/credo/Credo.Check.Refactor.RedundantWithClauseResult.html) | Removes redundant with clause results | [Control Flow Macros](docs/control_flow_macros.md#with) | |
+| [`.UnlessWithElse`](https://hexdocs.pm/credo/Credo.Check.Refactor.UnlessWithElse.html) | Simplifies unless with else | [Control Flow Macros](docs/control_flow_macros.md#if-and-unless) | |
+| [`.WithClauses`](https://hexdocs.pm/credo/Credo.Check.Refactor.WithClauses.html) | Optimizes with clauses | [Control Flow Macros](docs/control_flow_macros.md#with) | |
+
+<!-- tabs-close -->
 
 ## License
 
