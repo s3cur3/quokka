@@ -22,17 +22,23 @@ defmodule Quokka.Config do
   alias Credo.Check.Readability.SinglePipe
   alias Credo.Check.Readability.StrictModuleLayout
   alias Credo.Check.Refactor.PipeChainStart
+  alias Quokka.Style.Blocks
   alias Quokka.Style.Configs
+  alias Quokka.Style.Defs
+  alias Quokka.Style.Deprecations
+  alias Quokka.Style.ModuleDirectives
+  alias Quokka.Style.Pipes
+  alias Quokka.Style.SingleNode
 
   @key __MODULE__
 
   @styles [
-    Quokka.Style.ModuleDirectives,
-    Quokka.Style.Pipes,
-    Quokka.Style.SingleNode,
-    Quokka.Style.Defs,
-    Quokka.Style.Blocks,
-    Quokka.Style.Deprecations,
+    ModuleDirectives,
+    Pipes,
+    SingleNode,
+    Defs,
+    Blocks,
+    Deprecations,
     Configs
   ]
 
@@ -53,14 +59,19 @@ defmodule Quokka.Config do
   def set!(config) do
     credo_opts = extract_configs_from_credo()
 
-    lift_alias_excluded_namespaces = (credo_opts[:lift_alias_excluded_namespaces] || []) |> Enum.map(&Atom.to_string/1)
-    lift_alias_excluded_lastnames = (credo_opts[:lift_alias_excluded_lastnames] || []) |> Enum.map(&Atom.to_string/1)
+    lift_alias_excluded_namespaces =
+      (credo_opts[:lift_alias_excluded_namespaces] || []) |> Enum.map(&Atom.to_string/1)
+
+    lift_alias_excluded_lastnames =
+      (credo_opts[:lift_alias_excluded_lastnames] || []) |> Enum.map(&Atom.to_string/1)
 
     reorder_configs =
       if is_nil(config[:reorder_configs]), do: true, else: config[:reorder_configs]
 
     inefficient_function_rewrites =
-      if is_nil(config[:inefficient_function_rewrites]), do: true, else: config[:inefficient_function_rewrites]
+      if is_nil(config[:inefficient_function_rewrites]),
+        do: true,
+        else: config[:inefficient_function_rewrites]
 
     rewrite_deprecations =
       if is_nil(config[:rewrite_deprecations]), do: true, else: config[:rewrite_deprecations]
@@ -90,7 +101,7 @@ defmodule Quokka.Config do
       single_pipe_flag: credo_opts[:single_pipe_flag] || false,
       sort_order: credo_opts[:sort_order] || :alpha,
       strict_module_layout_order: strict_module_layout_order ++ (default_order -- strict_module_layout_order),
-      zero_arity_parens: credo_opts[:zero_arity_parens] || false,
+      zero_arity_parens: credo_opts[:zero_arity_parens] || false
     })
   end
 
@@ -107,8 +118,11 @@ defmodule Quokka.Config do
 
   def get_styles() do
     styles_to_remove =
-      for {module, flag_name} <- [{Configs, :reorder_configs}, {Quokka.Style.Deprecations, :rewrite_deprecations}],
-          do: (if get(flag_name), do: nil, else: module)
+      for {module, flag_name} <- [
+            {Configs, :reorder_configs},
+            {Deprecations, :rewrite_deprecations}
+          ],
+          do: if(get(flag_name), do: nil, else: module)
 
     @styles -- styles_to_remove
   end

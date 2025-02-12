@@ -341,7 +341,8 @@ defmodule Quokka.Style.Pipes do
   # function_call(with, args) or sigils. sigils are allowed, function w/ args is not
   defp valid_pipe_start?({fun, meta, args}) when is_atom(fun) do
     not Quokka.Config.refactor_pipe_chain_starts?() or first_arg_excluded_type?(args) or
-      (custom_macro?(meta) and (not Quokka.Config.block_pipe_flag?() or fun in Quokka.Config.block_pipe_exclude())) or
+      (custom_macro?(meta) and
+         (not Quokka.Config.block_pipe_flag?() or fun in Quokka.Config.block_pipe_exclude())) or
       "#{fun}" in Quokka.Config.pipe_chain_start_excluded_functions() or
       String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/)
   end
@@ -365,17 +366,15 @@ defmodule Quokka.Style.Pipes do
   defp first_arg_excluded_type?([{:<<>>, _, _} | _]),
     do: :bitstring in Quokka.Config.pipe_chain_start_excluded_argument_types()
 
+  defp first_arg_excluded_type?([{:&, _, _} | _]), do: :fn in Quokka.Config.pipe_chain_start_excluded_argument_types()
 
-  defp first_arg_excluded_type?([{:&, _, _} | _]),
-    do: :fn in Quokka.Config.pipe_chain_start_excluded_argument_types()
-
-  defp first_arg_excluded_type?([{:fn, _, _} | _]),
-    do: :fn in Quokka.Config.pipe_chain_start_excluded_argument_types()
+  defp first_arg_excluded_type?([{:fn, _, _} | _]), do: :fn in Quokka.Config.pipe_chain_start_excluded_argument_types()
 
   defp first_arg_excluded_type?([{_, _, [arg1 | _]} | _]) do
     case arg1 do
       [{{:__block__, [format: :keyword, line: _], _}, _} | _] ->
-        :keyword in Quokka.Config.pipe_chain_start_excluded_argument_types() or :list in Quokka.Config.pipe_chain_start_excluded_argument_types()
+        :keyword in Quokka.Config.pipe_chain_start_excluded_argument_types() or
+          :list in Quokka.Config.pipe_chain_start_excluded_argument_types()
 
       _ ->
         get_type(arg1) in Quokka.Config.pipe_chain_start_excluded_argument_types()
@@ -383,7 +382,9 @@ defmodule Quokka.Style.Pipes do
   end
 
   defp first_arg_excluded_type?([[{{:__block__, [format: :keyword, line: _], _}, _} | _] | _]),
-    do: :keyword in Quokka.Config.pipe_chain_start_excluded_argument_types() or :list in Quokka.Config.pipe_chain_start_excluded_argument_types()
+    do:
+      :keyword in Quokka.Config.pipe_chain_start_excluded_argument_types() or
+        :list in Quokka.Config.pipe_chain_start_excluded_argument_types()
 
   # Bare variables are not excluded
   defp first_arg_excluded_type?(_), do: false

@@ -73,7 +73,7 @@ defmodule Quokka.MixProject do
         "docs/mix_configs.md": [title: "Mix Configs (config/config.exs, ...)"],
         "docs/module_directives.md": [title: "Module Directives (use, alias, ...)"],
         "README.md": [title: "Quokka"],
-        "LICENSE": [title: "License"]
+        LICENSE: [title: "License"]
       ]
     ]
   end

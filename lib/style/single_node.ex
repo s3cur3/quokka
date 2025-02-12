@@ -117,17 +117,23 @@ defmodule Quokka.Style.SingleNode do
 
   # Enum.into(enum, empty_map[, ...]) => Map.new(enum[, ...])
   defp style({{:., _, [{:__aliases__, _, [:Enum]}, :into]} = into, m, [enum, collectable | rest]} = node) do
-    if replacement = replace_into(into, collectable, rest), do: {replacement, m, [enum | rest]}, else: node
+    if replacement = replace_into(into, collectable, rest),
+      do: {replacement, m, [enum | rest]},
+      else: node
   end
 
   # lhs |> Enum.into(%{}, ...) => lhs |> Map.new(...)
   defp style({:|>, meta, [lhs, {{:., _, [{_, _, [:Enum]}, :into]} = into, m, [collectable | rest]}]} = node) do
-    if replacement = replace_into(into, collectable, rest), do: {:|>, meta, [lhs, {replacement, m, rest}]}, else: node
+    if replacement = replace_into(into, collectable, rest),
+      do: {:|>, meta, [lhs, {replacement, m, rest}]},
+      else: node
   end
 
   for m <- [:Map, :Keyword] do
     # lhs |> Map.merge(%{key: value}) => lhs |> Map.put(:key, value)
-    defp style({:|>, pm, [lhs, {{:., dm, [{_, _, [unquote(m)]} = module, :merge]}, m, [{:%{}, _, [{key, value}]}]}]} = node) do
+    defp style(
+           {:|>, pm, [lhs, {{:., dm, [{_, _, [unquote(m)]} = module, :merge]}, m, [{:%{}, _, [{key, value}]}]}]} = node
+         ) do
       if Quokka.Config.inefficient_function_rewrites?(),
         do: {:|>, pm, [lhs, {{:., dm, [module, :put]}, m, [key, value]}]},
         else: node
@@ -163,7 +169,9 @@ defmodule Quokka.Style.SingleNode do
     end
 
     # Map.drop(foo, [one_key]) => Map.delete(foo, one_key)
-    defp style({{:., dm, [{_, _, [unquote(m)]} = module, :drop]}, m, [lhs, {:__block__, _, [[{op, _, _} = key]]}]} = node)
+    defp style(
+           {{:., dm, [{_, _, [unquote(m)]} = module, :drop]}, m, [lhs, {:__block__, _, [[{op, _, _} = key]]}]} = node
+         )
          when op != :| do
       if Quokka.Config.inefficient_function_rewrites?(),
         do: {{:., dm, [module, :delete]}, m, [lhs, key]},
@@ -180,7 +188,9 @@ defmodule Quokka.Style.SingleNode do
 
   # {DateTime,NaiveDateTime,Time,Date}.compare(a, b) == :lt => {DateTime,NaiveDateTime,Time,Date}.before?(a, b)
   # {DateTime,NaiveDateTime,Time,Date}.compare(a, b) == :gt => {DateTime,NaiveDateTime,Time,Date}.after?(a, b)
-  defp style({:==, _, [{{:., dm, [{:__aliases__, am, [mod]}, :compare]}, funm, args}, {:__block__, _, [result]}]} = node)
+  defp style(
+         {:==, _, [{{:., dm, [{:__aliases__, am, [mod]}, :compare]}, funm, args}, {:__block__, _, [result]}]} = node
+       )
        when mod in ~w[DateTime NaiveDateTime Time Date]a and result in [:lt, :gt] do
     if Quokka.Config.inefficient_function_rewrites?() do
       fun = if result == :lt, do: :before?, else: :after?
@@ -218,11 +228,14 @@ defmodule Quokka.Style.SingleNode do
   # ARROW REWRITES
   # `with`, `for` left arrow - if only we could write something this trivial for `->`!
   defp style({:<-, cm, [lhs, rhs]}), do: {:<-, cm, [put_matches_on_right(lhs), rhs]}
+
   # there's complexity to `:->` due to `cond` also utilizing the symbol but with different semantics.
   # thus, we have to have a clause for each place that `:->` can show up
   # `with` elses
   defp style({{:__block__, _, [:else]} = else_, arrows}), do: {else_, rewrite_arrows(arrows)}
+
   defp style({:case, cm, [head, [{do_, arrows}]]}), do: {:case, cm, [head, [{do_, rewrite_arrows(arrows)}]]}
+
   defp style({:fn, m, arrows}), do: {:fn, m, rewrite_arrows(arrows)}
 
   defp style(node), do: node
@@ -267,5 +280,6 @@ defmodule Quokka.Style.SingleNode do
   defp remove_underscores([], reversed_list), do: reversed_list
 
   defp add_underscores([a, b, c, d | rest], acc), do: add_underscores([d | rest], [?_, c, b, a | acc])
+
   defp add_underscores(reversed_list, acc), do: reversed_list |> Enum.reverse(acc) |> to_string()
 end

@@ -219,15 +219,16 @@ defmodule Quokka.Style.ModuleDirectives do
           ast = if Quokka.Config.rewrite_multi_alias?(), do: expand(ast), else: [ast]
 
           # import and used might get hoisted above aliases, so need to dealias depending on the layout order
-          {before, _after} = 
+          {before, _after} =
             Quokka.Config.strict_module_layout_order()
-            |> Enum.split_while(& &1 != :alias)
+            |> Enum.split_while(&(&1 != :alias))
 
           needs_dealiasing = directive in ~w(import use)a and Enum.member?(before, directive)
 
           ast = if needs_dealiasing, do: AliasEnv.expand(acc.dealiases, ast), else: ast
 
-          dealiases = if directive == :alias, do: AliasEnv.define(acc.dealiases, ast), else: acc.dealiases
+          dealiases =
+            if directive == :alias, do: AliasEnv.define(acc.dealiases, ast), else: acc.dealiases
 
           # the reverse accounts for `expand` putting things in reading order, whereas we're accumulating in reverse
           %{acc | directive => Enum.reverse(ast, acc[directive]), dealiases: dealiases}
@@ -319,7 +320,11 @@ defmodule Quokka.Style.ModuleDirectives do
     dealiases = AliasEnv.define(aliases)
     already_lifted = Map.values(dealiases)
     excluded = dealiases |> Map.keys() |> Enum.into(Quokka.Config.lift_alias_excluded_lastnames())
-    liftable = if Quokka.Config.lift_alias?(), do: find_liftable_aliases(requires ++ nondirectives, excluded, already_lifted), else: []
+
+    liftable =
+      if Quokka.Config.lift_alias?(),
+        do: find_liftable_aliases(requires ++ nondirectives, excluded, already_lifted),
+        else: []
 
     if Enum.any?(liftable) do
       # This is a silly hack that helps comments stay put.
@@ -370,7 +375,7 @@ defmodule Quokka.Style.ModuleDirectives do
       {{:quote, _, _}, _} = zipper, lifts ->
         {:skip, zipper, lifts}
 
-      {{:__aliases__, _, [first, _| _] = aliases}, _} = zipper, lifts ->
+      {{:__aliases__, _, [first, _ | _] = aliases}, _} = zipper, lifts ->
         if Enum.all?(aliases, &is_atom/1) do
           alias_string = Enum.join(aliases, ".")
 
@@ -384,7 +389,8 @@ defmodule Quokka.Style.ModuleDirectives do
           last = List.last(aliases)
 
           lifts =
-            if excluded_namespace_match or last in excluded or length(aliases) <= Quokka.Config.lift_alias_depth() do
+            if excluded_namespace_match or last in excluded or
+                 length(aliases) <= Quokka.Config.lift_alias_depth() do
               lifts
             else
               Map.update(lifts, last, {aliases, 1}, fn
@@ -394,13 +400,14 @@ defmodule Quokka.Style.ModuleDirectives do
                 _ -> :collision_with_last
               end)
             end
-        # given:
-        #   C.foo()
-        #   A.B.C.foo()
-        #   A.B.C.foo()
-        #   C.foo()
-        #
-        # lifting A.B.C would create a collision with C.
+
+          # given:
+          #   C.foo()
+          #   A.B.C.foo()
+          #   A.B.C.foo()
+          #   C.foo()
+          #
+          # lifting A.B.C would create a collision with C.
           {:skip, zipper, Map.put(lifts, first, :collision_with_first)}
         else
           {:skip, zipper, lifts}
@@ -434,14 +441,16 @@ defmodule Quokka.Style.ModuleDirectives do
 
       {{:alias, _, [{:__aliases__, _, [_, _ | _] = aliases}]}, _} = zipper ->
         # the alias was aliased deeper down. we've lifted that alias to a root, so delete this alias
-        if aliases in to_alias and Enum.all?(aliases, &is_atom/1) and length(aliases) > Quokka.Config.lift_alias_depth(),
-          do: Zipper.remove(zipper),
-          else: zipper
+        if aliases in to_alias and Enum.all?(aliases, &is_atom/1) and
+             length(aliases) > Quokka.Config.lift_alias_depth(),
+           do: Zipper.remove(zipper),
+           else: zipper
 
       {{:__aliases__, meta, [_, _ | _] = aliases}, _} = zipper ->
-        if aliases in to_alias and Enum.all?(aliases, &is_atom/1) and length(aliases) > Quokka.Config.lift_alias_depth(),
-          do: Zipper.replace(zipper, {:__aliases__, meta, [List.last(aliases)]}),
-          else: zipper
+        if aliases in to_alias and Enum.all?(aliases, &is_atom/1) and
+             length(aliases) > Quokka.Config.lift_alias_depth(),
+           do: Zipper.replace(zipper, {:__aliases__, meta, [List.last(aliases)]}),
+           else: zipper
 
       zipper ->
         zipper

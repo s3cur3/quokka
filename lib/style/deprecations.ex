@@ -101,7 +101,7 @@ defmodule Quokka.Style.Deprecations do
          {:ok, stop} <- extract_value_from_range(last),
          true <- start > stop do
       step = {:__block__, [token: "1", line: lm[:line]], [1]}
-      {:"..//", rm, [first, last, step]}
+      {:..//, rm, [first, last, step]}
     else
       _ -> range
     end
@@ -109,7 +109,9 @@ defmodule Quokka.Style.Deprecations do
 
   # Extracts the positive or negative integer from the given range block
   defp extract_value_from_range({:__block__, _, [value]}) when is_integer(value), do: {:ok, value}
+
   defp extract_value_from_range({:-, _, [{:__block__, _, [value]}]}) when is_integer(value), do: {:ok, -value}
+
   defp extract_value_from_range(_), do: :non_int
 
   defp extract_date_value({:sigil_D, _, [{:<<>>, _, [date]}, []]}), do: Date.from_iso8601(date)
