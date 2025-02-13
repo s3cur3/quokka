@@ -18,6 +18,20 @@ defmodule Quokka.Style.Deprecations do
 
   def run({node, meta}, ctx), do: {:cont, {style(node), meta}, ctx}
 
+  # Deprecated in 1.18
+  # rewrite patterns of `first..last = ...` to `first..last//_ = ...`
+  defp style({:=, m, [{:.., _, [_first, _last]} = range, rhs]}), do: {:=, m, [rewrite_range_match(range), rhs]}
+  defp style({:->, m, [[{:.., _, [_first, _last]} = range], rhs]}), do: {:->, m, [[rewrite_range_match(range)], rhs]}
+  defp style({:<-, m, [{:.., _, [_first, _last]} = range, rhs]}), do: {:<-, m, [rewrite_range_match(range), rhs]}
+
+  defp style({def, dm, [{x, xm, params} | rest]}) when def in ~w(def defp)a and is_list(params),
+    do: {def, dm, [{x, xm, Enum.map(params, &rewrite_range_match/1)} | rest]}
+
+  # Deprecated in 1.18
+  # List.zip => Enum.zip
+  defp style({{:., dm_, [{:__aliases__, am, [:List]}, :zip]}, fm, arg}),
+    do: {{:., dm_, [{:__aliases__, am, [:Enum]}, :zip]}, fm, arg}
+
   # Logger.warn => Logger.warning
   # Started to emit warning after Elixir 1.15.0
   defp style({{:., dm, [{:__aliases__, am, [:Logger]}, :warn]}, funm, args}),
@@ -85,6 +99,9 @@ defmodule Quokka.Style.Deprecations do
 
   defp style(node), do: node
 
+  defp rewrite_range_match({:.., dm, [first, {_, m, _} = last]}), do: {:"..//", dm, [first, last, {:_, m, nil}]}
+  defp rewrite_range_match(x), do: x
+
   defp add_step_to_date_range?(first, last) do
     with {:ok, f} <- extract_date_value(first),
          {:ok, l} <- extract_date_value(last),
@@ -101,7 +118,7 @@ defmodule Quokka.Style.Deprecations do
          {:ok, stop} <- extract_value_from_range(last),
          true <- start > stop do
       step = {:__block__, [token: "1", line: lm[:line]], [1]}
-      {:..//, rm, [first, last, step]}
+      {:"..//", rm, [first, last, step]}
     else
       _ -> range
     end

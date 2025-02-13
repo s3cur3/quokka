@@ -132,7 +132,7 @@ defmodule Quokka.Style.PipesTest do
             y
           end
 
-        a(foo(if_result), b)
+        if_result |> foo() |> a(b)
         """
       )
     end
@@ -422,19 +422,16 @@ defmodule Quokka.Style.PipesTest do
     end
   end
 
-  describe "block pipe starts when credo check disabled" do
+  describe "block pipe starts when credo check disabled and PipeChainStart is enabled" do
     test "parent is a function invocation" do
       assert_style(
         "a(if x do y end |> foo(), b)",
         """
-        a(
-          foo(
-            if x do
-              y
-            end
-          ),
-          b
-        )
+        if x do
+          y
+        end
+        |> foo()
+        |> a(b)
         """
       )
     end
@@ -636,6 +633,18 @@ defmodule Quokka.Style.PipesTest do
       )
 
       Quokka.Config.set_for_test!(:block_pipe_flag, false)
+    end
+
+    test "onelines assignments" do
+      assert_style(
+        """
+        x =
+          y
+          |> Enum.map(&f/1)
+          |> Enum.join()
+        """,
+        "x = Enum.map_join(y, &f/1)"
+      )
     end
   end
 
@@ -959,16 +968,24 @@ defmodule Quokka.Style.PipesTest do
 
         assert_style(
           """
+          # a
+          # b
           a_multiline_mapper
           |> #{enum}.map(fn %{gets: shrunk, down: to_a_more_reasonable} ->
+            # c
             IO.puts "woo!"
+            # d
             {shrunk, to_a_more_reasonable}
           end)
           |> Enum.into(size)
           """,
           """
+          # a
+          # b
           Enum.into(a_multiline_mapper, size, fn %{gets: shrunk, down: to_a_more_reasonable} ->
+            # c
             IO.puts("woo!")
+            # d
             {shrunk, to_a_more_reasonable}
           end)
           """
@@ -1029,267 +1046,205 @@ defmodule Quokka.Style.PipesTest do
     end
   end
 
-  describe "comments" do
-    test "unpiping doesn't move comment in anonymous function" do
-      assert_style """
-                     aliased =
-                       aliases
-                       |> MapSet.new(fn
-                         {:alias, _, [{:__aliases__, _, aliases}]} -> List.last(aliases)
-                         {:alias, _, [{:__aliases__, _, _}, [{_as, {:__aliases__, _, [as]}}]]} -> as
-                         # alias __MODULE__ or other oddities
-                         {:alias, _, _} -> nil
-                       end)
+  describe "comments and..." do
+    test "unpiping" do
+      assert_style(
+        """
+        aliased =
+          aliases
+          |> MapSet.new(fn
+            {:alias, _, [{:__aliases__, _, aliases}]} -> List.last(aliases)
+            {:alias, _, [{:__aliases__, _, _}, [{_as, {:__aliases__, _, [as]}}]]} -> as
+            # alias __MODULE__ or other oddities
+            {:alias, _, _} -> nil
+          end)
 
-                     excluded_first = MapSet.union(aliased, @excluded_namespaces)
-                   """,
-                   """
-                   aliased =
-                     MapSet.new(aliases, fn
-                       {:alias, _, [{:__aliases__, _, aliases}]} -> List.last(aliases)
-                       {:alias, _, [{:__aliases__, _, _}, [{_as, {:__aliases__, _, [as]}}]]} -> as
-                       # alias __MODULE__ or other oddities
-                       {:alias, _, _} -> nil
-                     end)
+        excluded_first = MapSet.union(aliased, @excluded_namespaces)
+        """,
+        """
+        aliased =
+          MapSet.new(aliases, fn
+            {:alias, _, [{:__aliases__, _, aliases}]} -> List.last(aliases)
+            {:alias, _, [{:__aliases__, _, _}, [{_as, {:__aliases__, _, [as]}}]]} -> as
+            # alias __MODULE__ or other oddities
+            {:alias, _, _} -> nil
+          end)
 
-                   excluded_first = MapSet.union(aliased, @excluded_namespaces)
-                   """
+        excluded_first = MapSet.union(aliased, @excluded_namespaces)
+        """
+      )
+
+      assert_style(
+        """
+        foo =
+          # bar
+          bar
+          # baz
+          |> baz(fn ->
+            # a
+            a
+            # b
+            b
+          end)
+        """,
+        """
+        # bar
+        # baz
+        foo =
+          baz(bar, fn ->
+            # a
+            a
+            # b
+            b
+          end)
+        """
+      )
+
+      assert_style(
+        """
+        foo =
+          # bar
+          bar
+          # baz
+
+
+
+          |> baz(fn ->
+            # a
+            a
+            # b
+            b
+          end)
+        """,
+        """
+        # bar
+        # baz
+        foo =
+          baz(bar, fn ->
+            # a
+            a
+            # b
+            b
+          end)
+        """
+      )
+    end
+
+    test "optimizing" do
+      assert_style(
+        """
+        a
+        |> Enum.map(fn b ->
+          c
+          # a comment
+          d
+        end)
+        |> Enum.join(x)
+        |> Enum.each(...)
+        """,
+        """
+        a
+        |> Enum.map_join(x, fn b ->
+          c
+          # a comment
+          d
+        end)
+        |> Enum.each(...)
+        """
+      )
+
+      assert_style(
+        """
+        a
+        |> Enum.map(fn b ->
+          c
+          # a comment
+          d
+        end)
+        |> Enum.into(x)
+        |> Enum.each(...)
+        """,
+        """
+        a
+        |> Enum.into(x, fn b ->
+          c
+          # a comment
+          d
+        end)
+        |> Enum.each(...)
+        """
+      )
+
+      assert_style(
+        """
+        a
+        |> Enum.map(fn b ->
+          c
+          # a comment
+          d
+        end)
+        |> Keyword.new()
+        |> Enum.each(...)
+        """,
+        """
+        a
+        |> Keyword.new(fn b ->
+          c
+          # a comment
+          d
+        end)
+        |> Enum.each(...)
+        """
+      )
     end
   end
 
-  describe "n-arity functions" do
-    test "doesn't extract >0 arity functions when disabled" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_flag, false)
-
-      assert_style("""
-      M.f(a, b)
-      |> g()
-      |> h()
-      """)
-
-      assert_style("""
-      f(a, b)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_flag, true)
+  describe "pipifying" do
+    test "no false positives" do
+      pipe = "a() |> b() |> c()"
+      assert_style pipe
+      assert_style String.replace(pipe, " |>", "\n|>")
+      assert_style "fn -> #{pipe} end"
+      assert_style "if #{pipe}, do: ..."
+      assert_style "x\n\n#{pipe}"
+      assert_style "@moduledoc #{pipe}"
+      assert_style "!(#{pipe})"
+      assert_style "not foo(#{pipe})"
+      assert_style ~s<"\#{#{pipe}}">
     end
 
-    test "doesn't extract >0 arity functions when function in excluded_functions" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_functions, ["f", "Enum.map"])
-
-      assert_style("""
-      f(a, b)
-      |> g()
-      |> h()
-      """)
-
-      assert_style("""
-      Enum.map([1, 2, 3], &(&1 * 2))
-      |> Enum.reverse()
-      |> Enum.sum()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_functions, [])
+    test "when it's not actually the first argument!" do
+      assert_style """
+      a
+      |> M.f0(b |> M.f1() |> M.f2())
+      |> M.f3()
+      """
     end
 
-    test "doesn't extract >0 arity functions with atom argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:atom])
-
-      assert_style("""
-      f(:my_atom)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with binary argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:binary])
-
-      assert_style("""
-      f("my string", b, c)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with bitstring argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:bitstring])
-
-      assert_style("""
-      f(<<1>>)
-      |> g()
-      |> h()
-      """)
-
-      assert_style("""
-      f(<<1::integer-size(8), 2::integer-size(8), 3::integer-size(8)>>)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with boolean argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:boolean])
-
-      assert_style("""
-      f(true)
-      |> g()
-      |> h()
-      """)
-
-      assert_style("""
-      f(false)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with list argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:list])
-
-      assert_style("""
-      f([1, 2, 3])
-      |> g()
-      |> h()
-      """)
+    test "pipifying" do
+      assert_style "d(a |> b |> c)", "a |> b() |> c() |> d()"
 
       assert_style(
         """
-        f([a: 1, b: 2, c: 3])
-        |> g()
-        |> h()
+        # d
+        d(
+        # a
+          a
+          # b
+          |> b
+          # c
+          |> c
+        )
         """,
         """
-        f(a: 1, b: 2, c: 3)
-        |> g()
-        |> h()
-        """
-      )
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with keyword list argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:keyword])
-
-      assert_style("""
-      f(a: 1, b: 2, c: 3)
-      |> g()
-      |> h()
-      """)
-
-      assert_style(
-        """
-        f([a: 1, b: 2, c: 3])
-        |> g()
-        |> h()
-        """,
-        """
-        f(a: 1, b: 2, c: 3)
-        |> g()
-        |> h()
-        """
-      )
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with map argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:map])
-
-      assert_style("""
-      f(%{a: 1, b: 2})
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with function arguments" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:fn])
-
-      assert_style("""
-      f(&String.length/1)
-      |> g()
-      |> h()
-      """)
-
-      assert_style("""
-      f(fn x -> x * 2 end)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with number argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:number])
-
-      assert_style("""
-      f(1)
-      |> g()
-      |> h()
-      """)
-
-      assert_style("""
-      f(1.0)
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with regex argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:regex])
-
-      assert_style("""
-      Regex.run(~r/foo/, "foobar")
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "doesn't extract >0 arity functions with tuple argument" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [:tuple])
-
-      assert_style("""
-      f({1, 2, 3})
-      |> g()
-      |> h()
-      """)
-
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-    end
-
-    test "extracts >0 arity functions with non-excluded argument types" do
-      Quokka.Config.set_for_test!(:pipe_chain_start_excluded_argument_types, [])
-
-      assert_style(
-        """
-        f(x)
-        |> g()
-        |> h()
-        """,
-        """
-        x
-        |> f()
-        |> g()
-        |> h()
+        # d
+        # a
+        a
+        # b
+        |> b()
+        # c
+        |> c()
+        |> d()
         """
       )
     end

@@ -177,20 +177,18 @@ defmodule Quokka.Zipper do
   top level.
   """
   @spec insert_left(zipper, tree) :: zipper
-  def insert_left({_, nil}, _), do: raise(ArgumentError, message: "Can't insert siblings at the top level.")
-
-  def insert_left({tree, meta}, child), do: {tree, %{meta | l: [child | meta.l]}}
+  def insert_left(zipper, child), do: prepend_siblings(zipper, [child])
 
   @doc """
   Inserts many siblings to the left.
+  If the node is at the top of the tree, builds a new root `:__block__` while maintaining focus on the current node.
 
   Equivalent to
 
       Enum.reduce(siblings, zipper, &Zipper.insert_left(&2, &1))
   """
   @spec prepend_siblings(zipper, [tree]) :: zipper
-  def prepend_siblings({_, nil}, _), do: raise(ArgumentError, message: "Can't insert siblings at the top level.")
-
+  def prepend_siblings({node, nil}, siblings), do: {:__block__, [], siblings ++ [node]} |> zip() |> down() |> rightmost()
   def prepend_siblings({tree, meta}, siblings), do: {tree, %{meta | l: Enum.reverse(siblings, meta.l)}}
 
   @doc """
@@ -199,20 +197,18 @@ defmodule Quokka.Zipper do
   top level.
   """
   @spec insert_right(zipper, tree) :: zipper
-  def insert_right({_, nil}, _), do: raise(ArgumentError, message: "Can't insert siblings at the top level.")
-
-  def insert_right({tree, meta}, child), do: {tree, %{meta | r: [child | meta.r]}}
+  def insert_right(zipper, child), do: insert_siblings(zipper, [child])
 
   @doc """
   Inserts many siblings to the right.
+  If the node is at the top of the tree, builds a new root `:__block__` while maintaining focus on the current node.
 
   Equivalent to
 
       Enum.reduce(siblings, zipper, &Zipper.insert_right(&2, &1))
   """
   @spec insert_siblings(zipper, [tree]) :: zipper
-  def insert_siblings({_, nil}, _), do: raise(ArgumentError, message: "Can't insert siblings at the top level.")
-
+  def insert_siblings({node, nil}, siblings), do: {:__block__, [], [node | siblings]} |> zip() |> down()
   def insert_siblings({tree, meta}, siblings), do: {tree, %{meta | r: siblings ++ meta.r}}
 
   @doc """
@@ -328,23 +324,6 @@ defmodule Quokka.Zipper do
     if next = next(zipper), do: do_traverse(next, acc, fun), else: {top(zipper), acc}
   end
 
-  # Same as `traverse/3`, but doesn't waste cycles going back to the top of the tree when traversal is finished
-  @doc false
-  @spec reduce(zipper, term, (zipper, term -> {zipper, term})) :: term
-  def reduce({_, nil} = zipper, acc, fun) do
-    do_reduce(zipper, acc, fun)
-  end
-
-  def reduce({tree, meta}, acc, fun) do
-    {{updated, _meta}, acc} = do_reduce({tree, nil}, acc, fun)
-    {{updated, meta}, acc}
-  end
-
-  defp do_reduce(zipper, acc, fun) do
-    {zipper, acc} = fun.(zipper, acc)
-    if next = next(zipper), do: do_reduce(next, acc, fun), else: acc
-  end
-
   @doc """
   Traverses the tree in depth-first pre-order calling the given function for
   each node.
@@ -411,17 +390,14 @@ defmodule Quokka.Zipper do
     end
   end
 
-  @doc false
-  # Similar to traverse_while/3, but returns the `acc` directly, skipping the return to the top of the zipper.
-  # For that reason the :halt tuple is instead just a 2-ple of `{:halt, acc}`
-  @spec reduce_while(zipper, term, (zipper, term -> {command, zipper, term})) :: {zipper, term}
-  def reduce_while({_tree, nil} = zipper, acc, fun) do
-    do_reduce_while(zipper, acc, fun)
-  end
+  @doc """
+  Same as `traverse_while/3` except it only returns the acc, saving the work of returning to the top of the zipper.
 
-  def reduce_while({tree, meta}, acc, fun) do
-    {{updated, _meta}, acc} = do_reduce_while({tree, nil}, acc, fun)
-    {{updated, meta}, acc}
+  For that reason the `:halt` tuple is instead just a 2-ple of `{:halt, acc}`
+  """
+  @spec reduce_while(zipper, term, (zipper, term -> {:cont | :skip, zipper, term} | {:halt, term})) :: term
+  def reduce_while({tree, _meta}, acc, fun) do
+    do_reduce_while({tree, nil}, acc, fun)
   end
 
   defp do_reduce_while(zipper, acc, fun) do
