@@ -600,13 +600,13 @@ defmodule Quokka.Style.PipesTest do
       assert_style(
         """
         def halt(exec, halt_message) do
-          %__MODULE__{exec | halted: true}
+          %{exec | halted: true}
           |> put_halt_message(halt_message)
         end
         """,
         """
         def halt(exec, halt_message) do
-          put_halt_message(%__MODULE__{exec | halted: true}, halt_message)
+          put_halt_message(%{exec | halted: true}, halt_message)
         end
         """
       )
@@ -683,7 +683,7 @@ defmodule Quokka.Style.PipesTest do
 
       assert_style("""
       def halt(exec, halt_message) do
-        %__MODULE__{exec | halted: true}
+        %{exec | halted: true}
         |> put_halt_message(halt_message)
       end
       """)
@@ -1222,7 +1222,7 @@ defmodule Quokka.Style.PipesTest do
     end
 
     test "pipifying" do
-      assert_style "d(a |> b |> c)", "a |> b() |> c() |> d()"
+      assert_style("e(d(a |> b |> c), f)", "a |> b() |> c() |> d() |> e(f)")
 
       assert_style(
         """

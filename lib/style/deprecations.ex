@@ -59,6 +59,17 @@ defmodule Quokka.Style.Deprecations do
          do: {:|>, m, [lhs, {f, fm, [lob, opts]}]}
   end
 
+  if Version.match?(System.version(), ">= 1.17.0-dev") do
+    for {erl, ex} <- [hours: :hour, minutes: :minute, seconds: :second] do
+      defp style({{:., _, [{:__block__, _, [:timer]}, unquote(erl)]}, fm, [x]}),
+        do: {:to_timeout, fm, [[{{:__block__, [format: :keyword, line: fm[:line]], [unquote(ex)]}, x}]]}
+    end
+  end
+
+  # Struct update syntax is deprecated in 1.19
+  # `%Foo{x | y} => %{x | y}`
+  defp style({:%, _, [_struct, {:%{}, _, [{:|, _, _}]} = update]}), do: update
+
   # For ranges where `start > stop`, you need to explicitly include the step
   # Enum.slice(enumerable, 1..-2) => Enum.slice(enumerable, 1..-2//1)
   # String.slice("elixir", 2..-1) => String.slice("elixir", 2..-1//1)
@@ -99,7 +110,7 @@ defmodule Quokka.Style.Deprecations do
 
   defp style(node), do: node
 
-  defp rewrite_range_match({:.., dm, [first, {_, m, _} = last]}), do: {:"..//", dm, [first, last, {:_, m, nil}]}
+  defp rewrite_range_match({:.., dm, [first, {_, m, _} = last]}), do: {:..//, dm, [first, last, {:_, m, nil}]}
   defp rewrite_range_match(x), do: x
 
   defp add_step_to_date_range?(first, last) do
@@ -118,7 +129,7 @@ defmodule Quokka.Style.Deprecations do
          {:ok, stop} <- extract_value_from_range(last),
          true <- start > stop do
       step = {:__block__, [token: "1", line: lm[:line]], [1]}
-      {:"..//", rm, [first, last, step]}
+      {:..//, rm, [first, last, step]}
     else
       _ -> range
     end
