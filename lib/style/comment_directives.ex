@@ -41,7 +41,59 @@ defmodule Quokka.Style.CommentDirectives do
         end
       end)
 
+    zipper = apply_autosort(zipper, ctx)
+
     {:halt, zipper, %{ctx | comments: comments}}
+  end
+
+  defp apply_autosort(zipper, ctx) do
+    autosort_types = Quokka.Config.autosort()
+
+    if Enum.empty?(autosort_types) do
+      zipper
+    else
+      skip_sort_lines = collect_skip_sort_lines(ctx.comments)
+
+      Zipper.traverse(zipper, fn z ->
+        node = Zipper.node(z)
+        node_line = Style.meta(node)[:line]
+
+        should_skip = node_line && MapSet.member?(skip_sort_lines, node_line)
+        has_comments = has_comments_inside?(node, ctx.comments)
+        is_sortable = get_node_type(node) in autosort_types
+
+        if should_skip || has_comments || !is_sortable do
+          z
+        else
+          {sorted, _} = sort(node, [])
+          Zipper.replace(z, sorted)
+        end
+      end)
+    end
+  end
+
+  defp collect_skip_sort_lines(comments) do
+    comments
+    |> Enum.filter(&(&1.text == "# quokka:skip-sort"))
+    |> Enum.reduce(MapSet.new(), fn comment, lines ->
+      lines |> MapSet.put(comment.line) |> MapSet.put(comment.line + 1)
+    end)
+  end
+
+  defp get_node_type(node) do
+    case node do
+      {:%{}, _, _} -> :map
+      {:%, _, [_, {:%{}, _, _}]} -> :map
+      {:defstruct, _, _} -> :defstruct
+      _ -> nil
+    end
+  end
+
+  defp has_comments_inside?(node, comments) do
+    start_line = Style.meta(node)[:line] || 0
+    end_line = Style.max_line(node) || start_line
+
+    end_line > start_line && Enum.any?(comments, &(&1.line > start_line && &1.line < end_line))
   end
 
   # defstruct with a syntax-sugared keyword list hits here
@@ -63,11 +115,19 @@ defmodule Quokka.Style.CommentDirectives do
     {{:defstruct, meta, [list]}, comments}
   end
 
+  # map update with a keyword list
+  defp sort({:%{}, meta, [{:|, _, [var, keyword_list]}]}, comments) do
+    {{:__block__, meta, [keyword_list]}, comments} = sort({:__block__, meta, [keyword_list]}, comments)
+    {{:%{}, meta, [{:|, meta, [var, keyword_list]}]}, comments}
+  end
+
+  # map
   defp sort({:%{}, meta, list}, comments) when is_list(list) do
     {{:__block__, meta, [list]}, comments} = sort({:__block__, meta, [list]}, comments)
     {{:%{}, meta, list}, comments}
   end
 
+  # struct map
   defp sort({:%, m, [struct, map]}, comments) do
     {map, comments} = sort(map, comments)
     {{:%, m, [struct, map]}, comments}

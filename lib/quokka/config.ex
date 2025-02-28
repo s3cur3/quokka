@@ -75,6 +75,7 @@ defmodule Quokka.Config do
       @key,
       # quokka:sort
       %{
+        autosort: config[:autosort] || [],
         block_pipe_exclude: credo_opts[:block_pipe_exclude] || [],
         block_pipe_flag: credo_opts[:block_pipe_flag] || false,
         directories_excluded: Map.get(config[:files] || %{}, :excluded, []),
@@ -136,6 +137,10 @@ defmodule Quokka.Config do
 
   def sort_order() do
     get(:sort_order)
+  end
+
+  def autosort() do
+    get(:autosort)
   end
 
   def block_pipe_flag?() do
