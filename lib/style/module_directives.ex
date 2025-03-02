@@ -318,12 +318,10 @@ defmodule Quokka.Style.ModuleDirectives do
     # we can't use the dealias map built into state as that's what things look like before sorting
     # now that we've sorted, it could be different!
     dealiases = AliasEnv.define(aliases)
-    already_lifted = Map.values(dealiases)
-    excluded = dealiases |> Map.keys() |> Enum.into(Quokka.Config.lift_alias_excluded_lastnames())
 
     liftable =
       if Quokka.Config.lift_alias?(),
-        do: find_liftable_aliases(requires ++ nondirectives, excluded, already_lifted),
+        do: find_liftable_aliases(requires ++ nondirectives, dealiases),
         else: []
 
     if Enum.any?(liftable) do
@@ -347,15 +345,16 @@ defmodule Quokka.Style.ModuleDirectives do
     end
   end
 
-  defp find_liftable_aliases(ast, excluded, already_lifted) do
-    lifts =
-      already_lifted
-      |> Enum.map(&List.first/1)
-      |> Map.new(&{&1, :collision_with_first})
+  defp find_liftable_aliases(ast, dealiases) do
+    excluded = dealiases |> Map.keys() |> Enum.into(Quokka.Config.lift_alias_excluded_lastnames())
+
+    firsts = MapSet.new(dealiases, fn {_last, [first | _]} -> first end)
 
     ast
     |> Zipper.zip()
-    |> Zipper.reduce_while(lifts, fn
+    # we're reducing a datastructure that looks like
+    # %{last => {aliases, seen_before?} | :some_collision_probelm}
+    |> Zipper.reduce_while(%{}, fn
       # we don't want to rewrite alias name `defx Aliases ... do` of these three keywords
       {{defx, _, args}, _} = zipper, lifts when defx in ~w(defmodule defimpl defprotocol)a ->
         # don't conflict with submodules, which elixir automatically aliases
@@ -379,7 +378,7 @@ defmodule Quokka.Style.ModuleDirectives do
         if Enum.all?(aliases, &is_atom/1) do
           alias_string = Enum.join(aliases, ".")
 
-          excluded_namespace_match =
+          excluded_namespace? =
             Quokka.Config.lift_alias_excluded_namespaces()
             |> MapSet.filter(fn namespace ->
               String.starts_with?(alias_string, Atom.to_string(namespace) <> ".")
@@ -389,25 +388,32 @@ defmodule Quokka.Style.ModuleDirectives do
           last = List.last(aliases)
 
           lifts =
-            if excluded_namespace_match or last in excluded or
-                 length(aliases) <= Quokka.Config.lift_alias_depth() do
-              lifts
-            else
-              Map.update(lifts, last, {aliases, 1}, fn
-                {^aliases, count} -> {aliases, count + 1}
-                # if we have `Foo.Bar.Baz` and `Foo.Bar.Bop.Baz` both not aliased, we'll create a collision by lifting both
-                # grouping by last alias lets us detect these collisions
-                _ -> :collision_with_last
-              end)
+            cond do
+              # this alias existed before running format, so let's ensure it gets lifted
+              dealiases[last] == aliases ->
+                Map.put(lifts, last, {aliases, Quokka.Config.lift_alias_frequency() + 1})
+
+              # this alias would conflict with an existing alias, or the namespace is excluded, or the depth is too shallow
+              last in excluded or excluded_namespace? or length(aliases) <= Quokka.Config.lift_alias_depth() ->
+                lifts
+
+              # aliasing this would change the meaning of an existing alias
+              last > first and last in firsts ->
+                lifts
+
+              # Never seen this alias before
+              is_nil(lifts[last]) ->
+                Map.put(lifts, last, {aliases, 1})
+
+              # We've seen this before, add and do some bookkeeping for first-collisions
+              match?({^aliases, n} when is_integer(n), lifts[last]) ->
+                Map.put(lifts, last, {aliases, elem(lifts[last], 1) + 1})
+
+              # There is some type of collision
+              true ->
+                lifts
             end
 
-          # given:
-          #   C.foo()
-          #   A.B.C.foo()
-          #   A.B.C.foo()
-          #   C.foo()
-          #
-          # lifting A.B.C would create a collision with C.
           {:skip, zipper, Map.put(lifts, first, :collision_with_first)}
         else
           {:skip, zipper, lifts}
