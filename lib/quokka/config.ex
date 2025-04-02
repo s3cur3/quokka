@@ -48,7 +48,7 @@ defmodule Quokka.Config do
   @stdlib ~w(
     Access Agent Application Atom Base Behaviour Bitwise Code Date DateTime Dict Ecto Enum Exception
     File Float GenEvent GenServer HashDict HashSet Integer IO Kernel Keyword List
-    Macro Map MapSet Module NaiveDateTime Node Oban OptionParser Path Port Process Protocol
+    Macro Map MapSet Mix Module NaiveDateTime Node Oban OptionParser Path Port Process Protocol
     Range Record Regex Registry Set Stream String StringIO Supervisor System Task Time Tuple URI Version
   )a
 
@@ -73,11 +73,9 @@ defmodule Quokka.Config do
     quokka_config = formatter_opts[:quokka] || []
     credo_opts = extract_configs_from_credo()
 
-    lift_alias_excluded_namespaces =
-      Enum.map(credo_opts[:lift_alias_excluded_namespaces] || [], &Atom.to_string/1)
+    lift_alias_excluded_namespaces = credo_opts[:lift_alias_excluded_namespaces] || []
 
-    lift_alias_excluded_lastnames =
-      Enum.map(credo_opts[:lift_alias_excluded_lastnames] || [], &Atom.to_string/1)
+    lift_alias_excluded_lastnames = credo_opts[:lift_alias_excluded_lastnames] || []
 
     default_order = [:shortdoc, :moduledoc, :behaviour, :use, :import, :alias, :require]
     strict_module_layout_order = credo_opts[:strict_module_layout_order] || default_order
@@ -110,8 +108,10 @@ defmodule Quokka.Config do
         large_numbers_gt: credo_opts[:large_numbers_gt] || :infinity,
         lift_alias: credo_opts[:lift_alias] || false,
         lift_alias_depth: credo_opts[:lift_alias_depth] || 0,
-        lift_alias_excluded_lastnames: MapSet.new(lift_alias_excluded_lastnames ++ @stdlib),
-        lift_alias_excluded_namespaces: MapSet.new(lift_alias_excluded_namespaces ++ @stdlib),
+        lift_alias_excluded_lastnames:
+          MapSet.new(Enum.map(lift_alias_excluded_lastnames, &String.to_atom/1) ++ @stdlib),
+        lift_alias_excluded_namespaces:
+          MapSet.new(Enum.map(lift_alias_excluded_namespaces, &String.to_atom/1) ++ @stdlib),
         lift_alias_frequency: credo_opts[:lift_alias_frequency] || 0,
         line_length: min(credo_opts[:line_length], formatter_opts[:line_length]) || 98,
         only_styles: quokka_config[:only] || [],
