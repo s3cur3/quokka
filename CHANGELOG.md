@@ -3,6 +3,11 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.5.1] - 2025-04-09
+
+### Fixes
+- Fix pipe chain start with alias lifting exceptions. When an alias is excluded from lifting, it was not properly identifying invalid pipe chain start.
+
 ## [2.5.0] - 2025-04-01
 
 ### Improvements
