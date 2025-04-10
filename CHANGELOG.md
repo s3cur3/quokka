@@ -3,6 +3,11 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.5.2] - 2025-04-09
+
+### Fixes
+- Don't throw errors when styling an empty module
+
 ## [2.5.1] - 2025-04-09
 
 ### Fixes
