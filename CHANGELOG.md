@@ -3,6 +3,12 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.6.0] - 2025-04-17
+
+### Improvements
+
+- Use the elixir version from `mix.exs` instead of the system version, since these two might not always match, especially if you work in many different repos.
+
 ## [2.5.2] - 2025-04-09
 
 ### Fixes
