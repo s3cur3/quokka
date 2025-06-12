@@ -247,24 +247,14 @@ defmodule Quokka.Style.SingleNode do
     end
   end
 
-  @pipe_to_length_pattern quote do: {:|>, var!(pm), [var!(lhs), {:length, var!(lm), []}]}
+  @pipe_to_length_pattern quote do: {:|>, var!(pm), [var!(lhs), {:length, var!(m), []}]}
+  @pipe_to_count_pattern quote do: {:|>, var!(pm), [var!(lhs), {{:., var!(m), [{_, _, [:Enum]}, :count]}, _, []}]}
 
   for {lhs, rhs} <- [
         # foo |> bar() |> length() == 0 => foo |> bar() |> Enum.empty?()
         {@pipe_to_length_pattern, @literal_zero_pattern},
         # 0 == foo |> bar() |> length() => foo |> bar() |> Enum.empty?()
-        {@literal_zero_pattern, @pipe_to_length_pattern}
-      ] do
-    defp style({op, _, [unquote(lhs), unquote(rhs)]} = node) when op in [:==, :===] do
-      if Quokka.Config.inefficient_function_rewrites?(),
-        do: {:|>, pm, [lhs, {{:., lm, [{:__aliases__, lm, [:Enum]}, :empty?]}, lm, []}]},
-        else: node
-    end
-  end
-
-  @pipe_to_count_pattern quote do: {:|>, var!(pm), [var!(lhs), {{:., var!(cm), [{_, _, [:Enum]}, :count]}, _, []}]}
-
-  for {lhs, rhs} <- [
+        {@literal_zero_pattern, @pipe_to_length_pattern},
         # foo |> bar() |> Enum.count() == 0 => foo |> bar() |> Enum.empty?()
         {@pipe_to_count_pattern, @literal_zero_pattern},
         # 0 == foo |> bar() |> Enum.count() => foo |> bar() |> Enum.empty?()
@@ -272,7 +262,7 @@ defmodule Quokka.Style.SingleNode do
       ] do
     defp style({op, _, [unquote(lhs), unquote(rhs)]} = node) when op in [:==, :===] do
       if Quokka.Config.inefficient_function_rewrites?(),
-        do: {:|>, pm, [lhs, {{:., cm, [{:__aliases__, cm, [:Enum]}, :empty?]}, cm, []}]},
+        do: {:|>, pm, [lhs, {{:., m, [{:__aliases__, m, [:Enum]}, :empty?]}, m, []}]},
         else: node
     end
   end
