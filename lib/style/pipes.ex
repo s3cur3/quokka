@@ -361,6 +361,39 @@ defmodule Quokka.Style.Pipes do
     {:|>, pm, [lhs, {count, [line: meta[:line]], [filterer]}]}
   end
 
+  # `lhs |> Enum.filter(filterer1) |> Enum.filter(filterer2)` => `lhs |> Enum.filter(fn x -> filterer1.(x) and filterer2.(x) end)`
+  defp fix_pipe(
+         pipe_chain(
+           pm,
+           lhs,
+           {{:., _, [{_, _, [mod]}, :filter]}, meta, [filterer1]},
+           {{:., _, [{_, _, [:Enum]}, :filter]}, _, [filterer2]}
+         )
+       )
+       when mod in @enum do
+    # Extract the function bodies and variable names from the filter functions
+    {fn1_body, fn1_var} = extract_filter_body(filterer1)
+    {fn2_body, _fn2_var} = extract_filter_body(filterer2)
+    var = fn1_var || :val
+    var_ast = {var, meta, nil}
+    # Create a new combined filter function, using the first filter's variable name
+    combined_filter =
+      {:fn, meta,
+       [
+         {:->, meta,
+          [
+            [var_ast],
+            {:&&, meta,
+             [
+               replace_var(fn1_body, var),
+               replace_var(fn2_body, var)
+             ]}
+          ]}
+       ]}
+
+    {:|>, pm, [lhs, {{:., meta, [{:__aliases__, meta, [:Enum]}, :filter]}, meta, [combined_filter]}]}
+  end
+
   # `lhs |> Stream.map(fun) |> Stream.run()` => `lhs |> Enum.each(fun)`
   # `lhs |> Stream.each(fun) |> Stream.run()` => `lhs |> Enum.each(fun)`
   defp fix_pipe(
@@ -508,6 +541,25 @@ defmodule Quokka.Style.Pipes do
 
   # Bare variables are not excluded
   defp first_arg_excluded_type?(_), do: false
+
+  # Helper to extract the body of a filter function
+  defp extract_filter_body({:fn, _, [{:->, _, [[{:val, _, nil}], body]}]}), do: {body, :val}
+  defp extract_filter_body({:fn, _, [{:->, _, [[{:val2, _, nil}], body]}]}), do: {body, :val2}
+  defp extract_filter_body(filter_fn), do: {filter_fn, nil}
+
+  # Helper to replace the variable in a function body
+  defp replace_var({:not, meta, [arg]}, new_var), do: {:not, meta, [replace_var(arg, new_var)]}
+
+  defp replace_var({:==, meta, [left, right]}, new_var),
+    do: {:==, meta, [replace_var(left, new_var), replace_var(right, new_var)]}
+
+  defp replace_var({:rem, meta, [left, right]}, new_var),
+    do: {:rem, meta, [replace_var(left, new_var), replace_var(right, new_var)]}
+
+  defp replace_var({:is_nil, meta, [arg]}, new_var), do: {:is_nil, meta, [replace_var(arg, new_var)]}
+  defp replace_var({:val, old_meta, nil}, new_var), do: {new_var, old_meta, nil}
+  defp replace_var({:val2, old_meta, nil}, new_var), do: {new_var, old_meta, nil}
+  defp replace_var(other, _), do: other
 
   defp get_type(variable) do
     cond do

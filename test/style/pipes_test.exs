@@ -1277,4 +1277,33 @@ defmodule Quokka.Style.PipesTest do
       )
     end
   end
+
+  describe "Enum.filter |> Enum.filter" do
+    test "rewrites simple case" do
+      assert_style(
+        """
+        enum
+        |> Enum.filter(fn val -> not is_nil(val) end)
+        |> Enum.filter(fn val2 -> rem(val2, 2) == 0 end)
+        |> foo()
+        """,
+        """
+        enum
+        |> Enum.filter(fn val -> not is_nil(val) && rem(val, 2) == 0 end)
+        |> foo()
+        """
+      )
+
+      assert_style(
+        """
+        enum
+        |> Enum.filter(fn val -> not is_nil(val) end)
+        |> Enum.filter(fn val2 -> rem(val2, 2) == 0 end)
+        """,
+        """
+        Enum.filter(enum, fn val -> not is_nil(val) && rem(val, 2) == 0 end)
+        """
+      )
+    end
+  end
 end
