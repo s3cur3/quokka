@@ -3,6 +3,12 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.7.0] - 2025-06-15
+
+### Improvements
+
+- Add rewrites for ExpensiveEmptyEnumCheck
+
 ## [2.6.0] - 2025-04-17
 
 ### Improvements
