@@ -112,6 +112,164 @@ defmodule Quokka.Style.SingleNodeTest do
       assert_style("MyModule.length(foo) == 0", "MyModule.length(foo) == 0")
       assert_style("MyModule.Enum.count(foo) == 0", "MyModule.Enum.count(foo) == 0")
     end
+
+    test "does not monkey with length in guards" do
+      assert_style(
+        """
+        defmodule MyModule do
+          def foo(bar) when length(bar) == 0 do
+            :ok
+          end
+
+          defmodule Nested do
+            def baz(bop) when length(bop) > 0 do
+              :ok
+            end
+          end
+        end
+        """,
+        """
+        defmodule MyModule do
+          def foo(bar) when length(bar) == 0 do
+            :ok
+          end
+
+          defmodule Nested do
+            def baz(bop) when length(bop) > 0 do
+              :ok
+            end
+          end
+        end
+        """
+      )
+
+      # Function guards with length
+      assert_style("""
+      def foo(list) when length(list) > 0 do
+        :ok
+      end
+      """)
+
+      assert_style("""
+      defp bar(items) when is_list(items) and length(items) > 0 do
+        :ok
+      end
+      """)
+
+      # Function guards with Enum.count
+      assert_style("""
+      def baz(enum) when Enum.count(enum) > 0 do
+        :not_empty
+      end
+      """)
+
+      # Case statement guards
+      assert_style("""
+      case list do
+        items when length(items) > 0 -> :has_items
+        _ -> :empty
+      end
+      """)
+
+      # Multiple guard conditions
+      assert_style("""
+      def process(data) when is_list(data) and length(data) == 0 do
+        :empty_list
+      end
+      """)
+
+      # Guards with < operator
+      assert_style("""
+      def validate(items) when 0 < length(items) do
+        :valid
+      end
+      """)
+    end
+
+    test "rewrites length/count checks outside guard clauses" do
+      # Normal function bodies should still be rewritten
+      assert_style(
+        """
+        defmodule MyModule do
+          def foo(list) when length(list) > 0 do
+            perform_side_effect(list)
+
+            if length(list) > 0 do
+              :ok
+            end
+          end
+
+          def baz(bop) when is_list(bop) do
+            if Enum.count(bop) == 0 or length(bop) == 0 do
+              :ok
+            end
+          end
+
+          def whiz(a, b, c, d, e) when (length(a) > 0 and is_list(b)) or (is_list(c) and length(c) > 0) or (is_map(d) and length(e) == 3) do
+            if length(bop) > 0 do
+              :ok
+            end
+          end
+
+          defmodule Nested do
+            def bar(list) when length(list) == 0 do
+              if length(list) == 0 do
+                :ok
+              end
+            end
+          end
+        end
+        """,
+        """
+        defmodule MyModule do
+          def foo(list) when length(list) > 0 do
+            perform_side_effect(list)
+
+            if not Enum.empty?(list) do
+              :ok
+            end
+          end
+
+          def baz(bop) when is_list(bop) do
+            if Enum.empty?(bop) or Enum.empty?(bop) do
+              :ok
+            end
+          end
+
+          def whiz(a, b, c, d, e)
+              when (length(a) > 0 and is_list(b)) or (is_list(c) and length(c) > 0) or (is_map(d) and length(e) == 3) do
+            if not Enum.empty?(bop) do
+              :ok
+            end
+          end
+
+          defmodule Nested do
+            def bar(list) when length(list) == 0 do
+              if Enum.empty?(list) do
+                :ok
+              end
+            end
+          end
+        end
+        """
+      )
+
+      # Case expressions (not guards) should be rewritten
+      assert_style(
+        """
+        case length(items) > 0 do
+          true -> :has_items
+          false -> :empty
+        end
+        """,
+        """
+        case not Enum.empty?(items) do
+          true -> :has_items
+          false -> :empty
+        end
+        """
+      )
+    end
   end
 
   describe "Timex.now/0,1" do
