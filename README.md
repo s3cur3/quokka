@@ -56,7 +56,7 @@ in `.formatter.exs` to fine tune your setup:
 [
   plugins: [Quokka],
   quokka: [
-    autosort: [:map, :defstruct],
+    autosort: [:map, :defstruct, :schema],
     inefficient_function_rewrites: true | false,
     files: %{
       included: ["lib/", ...],
@@ -102,14 +102,15 @@ in `.formatter.exs` to fine tune your setup:
 ]
 ```
 
-| Option                           | Description                                                                                                                                                                                                | Default                                                             |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `:autosort`                      | Sort all maps and/or defstructs in your codebase. Quokka will skip sorting maps that have comments inside them, though sorting can still be forced with `# quokka:sort`.                                   | `[]`                                                                |
-| `:files`                         | Quokka gets files from `.formatter.exs[:inputs]`. However, in some cases you may need to selectively exclude/include files you wish to still run in `mix format`, but have different behavior with Quokka. | `%{included: [], excluded: []}` (all files included, none excluded) |
-| `:only`                          | Only include the given modules. The special `:line_length` option excludes all changes except line length fixups.                                                                                          | `[]` (all modules included)                                         |
-| `:exclude`                       | Exclude the given modules. This is just a convenience function that filters from the `:only` list.                                                                                                         | `[]` (all modules included)                                         |
-| `:inefficient_function_rewrites` | Rewrite inefficient functions to more efficient form                                                                                                                                                       | `true`                                                              |
-| `:piped_function_exclusions`     | Allows you to specify certain functions that won't be rewritten into a pipe. Particularly good for things like Ecto's `subquery` macro.                                                                    | `[]`                                                                |
+| Option | Description | Options | Default |
+|--------|-------------|---------|--------|
+| `:autosort` | Sort all maps and/or defstructs in your codebase. Quokka will skip sorting maps that have comments inside them, though sorting can still be forced with `# quokka:sort`. | `:map, :defstruct, :schema` | `[]` |
+| `autosort: [schema: [:field, :has_many, ...]]` | Custom type ordering for schemas based | All Ecto schema types | `[:field, :belongs_to, :has_many, :has_one, :many_to_many, :embeds_many, :embeds_one]` |
+| `:files` | Quokka gets files from `.formatter.exs[:inputs]`. However, in some cases you may need to selectively exclude/include files you wish to still run in `mix format`, but have different behavior with Quokka. | `%{included: [], excluded: []}` (all files included, none excluded) |
+| `:only` | Only include the given modules. The special `:line_length` option excludes all changes except line length fixups. | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node]` | `[]` (all modules included) |
+| `:exclude` | Rewrites to exclude. This is filters from the `:only` list, and includes additional exclusions (`:nums_with_underscores, :autosort_ecto`) | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node, :nums_with_underscores, :autosort_ecto]` | `[]` (all rewrites included) |
+| `:inefficient_function_rewrites` | Rewrite inefficient functions to more efficient form | `true \| false` | `true` |
+| `:piped_function_exclusions` | Allows you to specify certain functions that won't be rewritten into a pipe. Particularly good for things like Ecto's `subquery` macro. | `[:subquery, :"Repo.update", ...]` | `[]` |
 
 ## Credo inspired rewrites
 
