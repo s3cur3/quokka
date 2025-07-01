@@ -50,13 +50,35 @@ defmodule Quokka.Style.CommentDirectives do
       should_skip = node_line && MapSet.member?(skip_sort_lines, node_line)
       has_comments = has_comments_inside?(node, ctx.comments)
       is_sortable = get_node_type(node) in autosort_types
+      is_query = is_ecto_from_query?(node)
 
-      if should_skip || has_comments || !is_sortable do
-        {:cont, zipper, %{ctx | comments: comments}}
-      else
-        {sorted, _} = sort(node, [])
-        {:cont, Zipper.replace(zipper, sorted), %{ctx | comments: comments}}
+      cond do
+        is_query and Quokka.Config.autosort_exclude_ecto?() ->
+          {:skip, zipper, %{ctx | comments: comments}}
+
+        should_skip || has_comments || !is_sortable ->
+          {:cont, zipper, %{ctx | comments: comments}}
+
+        true ->
+          {sorted, _} = sort(node, [])
+          {:cont, Zipper.replace(zipper, sorted), %{ctx | comments: comments}}
       end
+    end
+  end
+
+  defp is_ecto_from_query?(node) do
+    case node do
+      # Matches the remote call: `Ecto.Query.from(...)`
+      {{:., _, [{:__aliases__, _, [:Ecto, :Query]}, :from]}, _, _} ->
+        true
+
+      # Matches the local call `from ...` and checks for the `in` expression
+      # to ensure it's likely an Ecto query.
+      {:from, _, [{:in, _, _} | _]} ->
+        true
+
+      _ ->
+        false
     end
   end
 

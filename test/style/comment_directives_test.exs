@@ -256,6 +256,70 @@ defmodule Quokka.Style.CommentDirectivesTest do
       )
     end
 
+    test "autosorts ecto queries" do
+      Mimic.stub(Quokka.Config, :autosort, fn -> [:map] end)
+
+      assert_style(
+        """
+        defmodule Example do
+          import Ecto.Query
+
+          def union_query() do
+            query1 =
+              from u in "users",
+                select: %{
+                  name: u.name,
+                  email: u.email,
+                  active: true
+                }
+          end
+        end
+        """,
+        """
+        defmodule Example do
+          import Ecto.Query
+
+          def union_query() do
+            query1 =
+              from(u in "users",
+                select: %{
+                  active: true,
+                  email: u.email,
+                  name: u.name
+                }
+              )
+          end
+        end
+        """
+      )
+    end
+
+    test "skips autosort for ecto queries" do
+      Mimic.stub(Quokka.Config, :autosort, fn -> [:map] end)
+      Mimic.stub(Quokka.Config, :autosort_exclude_ecto?, fn -> true end)
+
+      assert_style("""
+      defmodule Example do
+        import Ecto.Query
+
+        def union_query() do
+          query1 =
+            from(u in "users",
+              select: %{
+                name: u.name,
+                email: u.email,
+                active: true
+              }
+            )
+        end
+      end
+      """)
+
+      # does sort another map with `from`
+      assert_style("from = %{c: 1, b: 2, a: 3}", "from = %{a: 3, b: 2, c: 1}")
+      assert_style("%{to: 3, from: 1, where: 2}", "%{from: 1, to: 3, where: 2}")
+    end
+
     test "skips autosorting maps when there is a skip-sort directive" do
       Mimic.stub(Quokka.Config, :autosort, fn -> [:map] end)
 
@@ -263,6 +327,89 @@ defmodule Quokka.Style.CommentDirectivesTest do
       # quokka:skip-sort
       %{c: 2, b: 3, a: 4, d: 1}
       """)
+    end
+
+    test "skips autosort for remote Ecto.Query.from calls" do
+      Mimic.stub(Quokka.Config, :autosort, fn -> [:map] end)
+      Mimic.stub(Quokka.Config, :autosort_exclude_ecto?, fn -> true end)
+
+      # Should not sort maps in remote Ecto.Query.from calls
+      assert_style("""
+      defmodule Example do
+        def query_with_explicit_module() do
+          Ecto.Query.from(u in "users",
+            select: %{
+              name: u.name,
+              email: u.email,
+              active: true
+            }
+          )
+        end
+      end
+      """)
+    end
+
+    test "does not skip autosort for non-Ecto from functions" do
+      Mimic.stub(Quokka.Config, :autosort, fn -> [:map] end)
+      Mimic.stub(Quokka.Config, :autosort_exclude_ecto?, fn -> true end)
+
+      # Should sort maps in non-Ecto from functions (false positive prevention)
+      assert_style(
+        """
+        defmodule Example do
+          def custom_from() do
+            # This is not an Ecto query, just a function named 'from'
+            result = from(%{z: 1, a: 2, m: 3})
+            result
+          end
+        end
+        """,
+        """
+        defmodule Example do
+          def custom_from() do
+            # This is not an Ecto query, just a function named 'from'
+            result = from(%{a: 2, m: 3, z: 1})
+            result
+          end
+        end
+        """
+      )
+
+      # Should sort maps in module-qualified from calls that aren't Ecto
+      assert_style(
+        """
+        defmodule Example do
+          def custom_query() do
+            MyModule.from(%{z: 1, a: 2, m: 3})
+          end
+        end
+        """,
+        """
+        defmodule Example do
+          def custom_query() do
+            MyModule.from(%{a: 2, m: 3, z: 1})
+          end
+        end
+        """
+      )
+    end
+
+    test "correctly identifies Ecto queries with various patterns" do
+      Mimic.stub(Quokka.Config, :autosort, fn -> [:map] end)
+      Mimic.stub(Quokka.Config, :autosort_exclude_ecto?, fn -> true end)
+
+      # Should not sort - standard Ecto query with 'in' clause
+      assert_style("""
+      import Ecto.Query
+
+      from(p in Post, select: %{title: p.title, id: p.id})
+      """)
+
+      # Should sort - 'from' without 'in' clause (not an Ecto query pattern)
+      assert_style(
+        "from(%{z: 1, a: 2})",
+        "from(%{a: 2, z: 1})"
+      )
     end
 
     test "skips autosorting maps when there is a comment inside the map" do

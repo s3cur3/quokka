@@ -70,6 +70,14 @@ The default order is: `[:field, :belongs_to, :has_many, :has_one, :many_to_many,
 
 Quokka will skip sorting entities that have comments inside them, though sorting can still be forced with `# quokka:sort`. Finally, when `autosort` is enabled, a specific entity can be skipped by adding `# quokka:skip-sort` on the line above it.
 
+Sorting within Ecto queries can be disabled by specifying `exclude: [:autosort_ecto]`. If your codebase makes use of `union` queries, this option may be desirable, since `union` matches on position and not on name.
+
+**Note on Ecto Query Detection**: Quokka uses pattern matching to identify Ecto queries and will skip autosorting maps within:
+- Remote calls to `Ecto.Query.from(...)`
+- Local `from` macro calls that include an `in` clause (e.g., `from u in "users", ...`)
+
+This detection is designed to prevent false positives while catching the most common Ecto query patterns. Non-Ecto functions named `from` will not be affected.
+
 #### Examples
 
 When `autosort: [:map]` is enabled:
@@ -159,3 +167,29 @@ defmodule MySchema do
 end
 ```
 
+When `autosort: [:exclude_ecto]` is enabled, the following will not get sorted:
+```elixir
+# Using imported from macro (detected by 'in' clause)
+query1 =
+  from u in "users",
+    select: %{
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      active: true,
+      role: "user"
+    }
+
+# Using fully qualified Ecto.Query.from
+query2 = 
+  Ecto.Query.from(p in Post,
+    select: %{
+      title: p.title,
+      author: p.author,
+      date: p.inserted_at
+    }
+  )
+
+# But non-Ecto functions named 'from' will still have their maps sorted
+result = MyModule.from(%{z: 1, a: 2, m: 3})  # map will be sorted to %{a: 2, m: 3, z: 1}
+```
