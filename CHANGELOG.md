@@ -3,6 +3,24 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.8.0] - 2025-07-01
+
+### Improvements
+- Leverage the Elixir version in the project to determine deprecation rewrites (instead of system version).
+- Add `exclude: [nums_with_underscores]` config to ignore numbers with underscores. (Don't style 100_00 as 10_000).
+- Add `exclude: [:autosort_ecto]` config to skip autosorting within Ecto queries.
+- Rewrite ExpensiveEmptyEnumCheck for Enum.count/2 (previously only supported Enum.count/1)
+- Rewrite ExpensiveEmptyEnumCheck in guards
+- Autosort efficiency improvements
+
+### Fixes
+- Run formatter on ignored files. Previously, ignored files weren't getting formatted by default formatter.
+- Add changelog to Hex package metadata
+
+### Deprecations
+- `piped_function_exclusions` is now deprecated. Use `exclude: [piped_functions: []]`
+- `inefficient_function_rewrites` is now deprecated. Use `exclude: [inefficient_functions]`
+
 ## [2.7.1] - 2025-06-16
 
 ### Fixes
