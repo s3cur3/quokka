@@ -61,7 +61,7 @@ defmodule Quokka.MixProject do
   defp docs() do
     [
       assets: %{"docs/assets" => "docs/assets"},
-      logo: "docs/assets/quokka-transparent.jpg",
+      logo: "docs/assets/quokka-no-text.png",
       main: "readme",
       source_ref: "v#{@version}",
       source_url: @url,
