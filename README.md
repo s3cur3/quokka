@@ -104,12 +104,12 @@ in `.formatter.exs` to fine tune your setup:
 ```
 
 | Option | Description | Options | Default |
-|--------|-------------|---------|--------|
+|--------|-------------|---------|---------|
 | `:autosort` | Sort all maps and/or defstructs in your codebase. Quokka will skip sorting maps that have comments inside them, though sorting can still be forced with `# quokka:sort`. | `:map, :defstruct, :schema` | `[]` |
-| `autosort: [schema: [:field, :has_many, ...]]` | Custom type ordering for schemas based | All Ecto schema types | `[:field, :belongs_to, :has_many, :has_one, :many_to_many, :embeds_many, :embeds_one]` |
-| `:files` | Quokka gets files from `.formatter.exs[:inputs]`. However, in some cases you may need to selectively exclude/include files you wish to still run in `mix format`, but have different behavior with Quokka. | `%{included: [], excluded: []}` (all files included, none excluded) |
+| `autosort: [schema: [:field, :has_many, ...]]` | Custom type ordering for schemas | All Ecto schema types | `[:field, :belongs_to, :has_many, :has_one, :many_to_many, :embeds_many, :embeds_one]` |
+| `:files` | Quokka gets files from `.formatter.exs[:inputs]`. However, in some cases you may need to selectively exclude/include files you wish to still run in `mix format`, but have different behavior with Quokka. | `%{included: [], excluded: []}` (all files included, none excluded) | `%{included: [], excluded: []}` |
 | `:only` | Only include the given modules. The special `:line_length` option excludes all changes except line length fixups. | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node]` | `[]` (all modules included) |
-| `:exclude` | Rewrites to exclude. This is filters from the `:only` list, and includes additional exclusions (`:nums_with_underscores, :autosort_ecto, :inefficient_functions, :piped_functions`) | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node, :nums_with_underscores, :autosort_ecto, :inefficient_functions, :piped_functions]` | `[]` (all rewrites included) |
+| `:exclude` | Rewrites to exclude. This filters from the `:only` list, and includes additional exclusion options (`:nums_with_underscores, :autosort_ecto, :inefficient_functions, :piped_functions`) | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node, :nums_with_underscores, :autosort_ecto, :inefficient_functions, :piped_functions]` | `[]` (all rewrites included) |
 | `exclude: [:inefficient_functions]` | Rewrite inefficient functions to more efficient form |  |  |
 | `exclude: [piped_functions]` | Allows you to specify certain functions that won't be rewritten into a pipe. Particularly good for things like Ecto's `subquery` macro. | `[:subquery, :"Repo.update", ...]` | `[]` |
 
@@ -177,7 +177,6 @@ the check can be configured further for fine tuning.
 | [`.WithClauses`](https://hexdocs.pm/credo/Credo.Check.Refactor.WithClauses.html)                             | Optimizes with clauses                  | [Control Flow Macros](docs/control_flow_macros.md#with)               |              |
 
 ### Credo.Check.Warning
-
 
 | Credo Check                                                                                                  | Rewrite Description                             | Documentation                                                         | Configurable |
 | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | --------------------------------------------------------------------- | ------------ |
