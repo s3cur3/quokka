@@ -212,6 +212,68 @@ defmodule Quokka.Style.SingleNode do
     end
   end
 
+  # assert Repo.one(query) => assert Repo.exists?(query)
+  defp style({:assert, am, [{{:., dm, [{:__aliases__, alias_meta, modules}, :one]}, funm, args}]} = node) do
+    if Quokka.Config.inefficient_function_rewrites?() and List.last(modules) == :Repo do
+      {:assert, am, [{{:., dm, [{:__aliases__, alias_meta, modules}, :exists?]}, funm, args}]}
+    else
+      node
+    end
+  end
+
+  # assert query |> Repo.one() => assert query |> Repo.exists?()
+  defp style(
+         {:assert, am, [{:|>, pipe_meta, [lhs, {{:., dm, [{:__aliases__, alias_meta, modules}, :one]}, funm, args}]}]} =
+           node
+       ) do
+    if Quokka.Config.inefficient_function_rewrites?() and List.last(modules) == :Repo do
+      {:assert, am, [{:|>, pipe_meta, [lhs, {{:., dm, [{:__aliases__, alias_meta, modules}, :exists?]}, funm, args}]}]}
+    else
+      node
+    end
+  end
+
+  # refute Repo.one(query) => refute Repo.exists?(query)
+  defp style({:refute, rm, [{{:., dm, [{:__aliases__, alias_meta, modules}, :one]}, funm, args}]} = node) do
+    if Quokka.Config.inefficient_function_rewrites?() and List.last(modules) == :Repo do
+      {:refute, rm, [{{:., dm, [{:__aliases__, alias_meta, modules}, :exists?]}, funm, args}]}
+    else
+      node
+    end
+  end
+
+  # refute query |> Repo.one() => refute query |> Repo.exists?()
+  defp style(
+         {:refute, rm, [{:|>, pipe_meta, [lhs, {{:., dm, [{:__aliases__, alias_meta, modules}, :one]}, funm, args}]}]} =
+           node
+       ) do
+    if Quokka.Config.inefficient_function_rewrites?() and List.last(modules) == :Repo do
+      {:refute, rm, [{:|>, pipe_meta, [lhs, {{:., dm, [{:__aliases__, alias_meta, modules}, :exists?]}, funm, args}]}]}
+    else
+      node
+    end
+  end
+
+  # if Repo.one(query) do => if Repo.exists?(query) do
+  defp style({:if, im, [condition, body]} = node) do
+    if Quokka.Config.inefficient_function_rewrites?() do
+      new_condition = rewrite_repo_one_in_conditional(condition)
+      {:if, im, [new_condition, body]}
+    else
+      node
+    end
+  end
+
+  # unless Repo.one(query) do => unless Repo.exists?(query) do
+  defp style({:unless, um, [condition, body]} = node) do
+    if Quokka.Config.inefficient_function_rewrites?() do
+      new_condition = rewrite_repo_one_in_conditional(condition)
+      {:unless, um, [new_condition, body]}
+    else
+      node
+    end
+  end
+
   # `Credo.Check.Readability.PreferImplicitTry`
   defp style({def, dm, [head, [{_, {:try, _, [try_children]}}]]}) when def in ~w(def defp)a,
     do: style({def, dm, [head, try_children]})
@@ -276,7 +338,10 @@ defmodule Quokka.Style.SingleNode do
   @pipe_to_count_pattern quote do: {:|>, var!(pm), [var!(lhs), {{:., var!(m), [{_, _, [:Enum]}, :count]}, _, []}]}
   @pipe_to_count_with_fn_pattern quote do:
                                          {:|>, var!(pm),
-                                          [var!(lhs), {{:., var!(m), [{_, _, [:Enum]}, :count]}, _, [var!(func)]}]}
+                                          [
+                                            var!(lhs),
+                                            {{:., var!(m), [{_, _, [:Enum]}, :count]}, _, [var!(func)]}
+                                          ]}
 
   for {lhs, rhs} <- [
         # foo |> bar() |> length() == 0 => foo |> bar() |> Enum.empty?()
@@ -411,6 +476,21 @@ defmodule Quokka.Style.SingleNode do
   end
 
   defp style(node), do: node
+
+  # Helper function to rewrite Repo.one calls in expressions
+  defp rewrite_repo_one_in_conditional(ast) do
+    Macro.prewalk(ast, fn
+      {{:., dm, [{:__aliases__, alias_metadata, modules}, :one]}, function_metadata, args} = node ->
+        if List.last(modules) == :Repo do
+          {{:., dm, [{:__aliases__, alias_metadata, modules}, :exists?]}, function_metadata, args}
+        else
+          node
+        end
+
+      node ->
+        node
+    end)
+  end
 
   defp replace_into({:., dm, [{_, am, _} = enum, _]}, collectable, rest) do
     case Quokka.Config.inefficient_function_rewrites?() and collectable do
