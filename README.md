@@ -110,8 +110,10 @@ in `.formatter.exs` to fine tune your setup:
 | `:files` | Quokka gets files from `.formatter.exs[:inputs]`. However, in some cases you may need to selectively exclude/include files you wish to still run in `mix format`, but have different behavior with Quokka. | `%{included: [], excluded: []}` (all files included, none excluded) | `%{included: [], excluded: []}` |
 | `:only` | Only include the given modules. The special `:line_length` option excludes all changes except line length fixups. | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node]` | `[]` (all modules included) |
 | `:exclude` | Rewrites to exclude. This filters from the `:only` list, and includes additional exclusion options (`:nums_with_underscores, :autosort_ecto, :inefficient_functions, :piped_functions`) | `[:blocks, :comment_directives, :configs, :defs, :deprecations, :line_length, :module_directives, :pipes, :single_node, :nums_with_underscores, :autosort_ecto, :inefficient_functions, :piped_functions]` | `[]` (all rewrites included) |
-| `exclude: [:inefficient_functions]` | Rewrite inefficient functions to more efficient form |  |  |
-| `exclude: [piped_functions]` | Allows you to specify certain functions that won't be rewritten into a pipe. Particularly good for things like Ecto's `subquery` macro. | `[:subquery, :"Repo.update", ...]` | `[]` |
+| `exclude: [:inefficient_functions]` | Excludes rewriting inefficient functions to more efficient form |  |  |
+| `exclude: [piped_functions: []]` | Allows you to specify certain functions that won't be rewritten into a pipe. Particularly good for things like Ecto's `subquery` macro. | `[:subquery, :"Repo.update", ...]` | `[]` |
+| `exclude: [:autosort_ecto]` | Skips autosorting within ecto queries. Particularly useful if you use union. | | |
+| `exclude: [:nums_with_underscores]` | Doesn't re-underscore numbers that already have it. Particularly useful if you have numbers like 100_00 in your codebase. | | |
 
 ## Credo inspired rewrites
 

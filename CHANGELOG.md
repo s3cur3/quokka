@@ -3,6 +3,11 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.8.1] - 2025-07-07
+
+### Fixes
+- Don't fail when credo not used in project.
+
 ## [2.8.0] - 2025-07-01
 
 ### Improvements
