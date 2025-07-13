@@ -3,6 +3,18 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.9.0] - 2025-07-13
+
+### Improvements
+- Rewrite inefficient Repo existence checks (`Repo.one` => `Repo.exists?` where appropriate)
+
+#### New rewrite type: tests
+Quokka will style your tests. For now, the main rewrite is `assert not` gets rewritten to `refute`. If you don't want this rewrite, add `exclude: [:tests]`.
+
+### Fixes
+- In autosort, sort numeric keys naturally (ie, 1, 2, 10 instead of 1, 10, 2).
+- Update mix.exs changelog link to use hexdocs.
+
 ## [2.8.1] - 2025-07-07
 
 ### Fixes
