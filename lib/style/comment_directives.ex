@@ -50,7 +50,7 @@ defmodule Quokka.Style.CommentDirectives do
       should_skip = node_line && MapSet.member?(skip_sort_lines, node_line)
       has_comments = has_comments_inside?(node, ctx.comments)
       is_sortable = get_node_type(node) in autosort_types
-      is_query = is_ecto_from_query?(node)
+      is_query = ecto_from_query?(node)
 
       cond do
         is_query and Quokka.Config.autosort_exclude_ecto?() ->
@@ -66,7 +66,7 @@ defmodule Quokka.Style.CommentDirectives do
     end
   end
 
-  defp is_ecto_from_query?(node) do
+  defp ecto_from_query?(node) do
     case node do
       # Matches the remote call: `Ecto.Query.from(...)`
       {{:., _, [{:__aliases__, _, [:Ecto, :Query]}, :from]}, _, _} ->
@@ -108,9 +108,28 @@ defmodule Quokka.Style.CommentDirectives do
     end_line > start_line && Enum.any?(comments, &(&1.line > start_line && &1.line < end_line))
   end
 
+  # Sorts a list with numeric-aware comparison for map keys
+  # Preserves existing behavior of sorting mixed atom/string keys alphabetically
+  defp numeric_aware_sort(list) do
+    # Split into numeric and non-numeric keys, sort each group appropriately
+    {numeric_items, non_numeric_items} = Enum.split_with(list, &numeric_key?/1)
+
+    sorted_numeric = Enum.sort_by(numeric_items, &extract_key/1)
+    sorted_non_numeric = Enum.sort_by(non_numeric_items, &Macro.to_string/1)
+
+    sorted_numeric ++ sorted_non_numeric
+  end
+
+  defp numeric_key?({{:__block__, _, [key]}, _}) when is_number(key), do: true
+  defp numeric_key?({key, _}) when is_number(key), do: true
+  defp numeric_key?(_), do: false
+
+  defp extract_key({{:__block__, _, [key]}, _}), do: key
+  defp extract_key({key, _}), do: key
+
   # defstruct with a syntax-sugared keyword list hits here
   defp sort({parent, meta, [list]} = node, comments) when parent in ~w(defstruct __block__)a and is_list(list) do
-    list = Enum.sort_by(list, &Macro.to_string/1)
+    list = numeric_aware_sort(list)
     line = meta[:line]
     # no need to fix line numbers if it's a single line structure
     {list, comments} =
@@ -200,7 +219,7 @@ defmodule Quokka.Style.CommentDirectives do
     sorted_groups =
       field_type_order
       |> Enum.map(fn type ->
-        grouped_fields |> Map.get(type, []) |> Enum.sort_by(&Macro.to_string/1)
+        grouped_fields |> Map.get(type, []) |> numeric_aware_sort()
       end)
       |> Enum.reject(&(&1 == []))
 
@@ -209,7 +228,7 @@ defmodule Quokka.Style.CommentDirectives do
       |> Map.drop(field_type_order)
       |> Map.values()
       |> List.flatten()
-      |> Enum.sort_by(&Macro.to_string/1)
+      |> numeric_aware_sort()
 
     sorted_fields =
       sorted_groups
@@ -236,7 +255,7 @@ defmodule Quokka.Style.CommentDirectives do
 
       {nodes, comments} =
         nodes
-        |> Enum.sort_by(&Macro.to_string/1)
+        |> numeric_aware_sort()
         |> Style.order_line_meta_and_comments(comments, m[:line])
 
       args = List.insert_at(args, -1, [{{:__block__, m1, [:do]}, {:__block__, m2, nodes}}])
