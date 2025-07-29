@@ -3,6 +3,11 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.10.0] - 2025-07-29
+
+### Improvements
+- Rewrite `refute not` => `assert`
+
 ## [2.9.1] - 2025-07-13
 
 ### Fixes
