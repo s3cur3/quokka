@@ -1,6 +1,6 @@
 # Test Assertions
 
-Quokka rewrites test assertions to use the more idiomatic `refute` macro where semantically appropriate.
+Quokka rewrites test assertions to use the more idiomatic `assert` and `refute` macros where semantically appropriate.
 
 ## Transformations
 
@@ -32,6 +32,36 @@ assert !result
 refute user.active
 refute valid?
 refute result
+```
+
+### `refute not` → `assert`
+
+Rewrites negated refutations to use the `assert` macro:
+
+```elixir
+# Before
+refute not user.status == :active
+refute not Process.alive?(pid)
+
+# After
+assert user.status == :active
+assert Process.alive?(pid)
+```
+
+### `refute !` → `assert`
+
+Rewrites bang-negated refutations to use the `assert` macro:
+
+```elixir
+# Before
+refute !user.active
+refute !valid?
+refute !result
+
+# After
+assert user.active
+assert valid?
+assert result
 ```
 
 ## Membership Testing
