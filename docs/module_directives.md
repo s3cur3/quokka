@@ -154,6 +154,7 @@ This addresses [`Credo.Check.Design.AliasUsage`](https://hexdocs.pm/credo/Credo.
 - `:excluded_lastnames`
 - `:if_nested_deeper_than`
 - `:if_called_more_often_than`
+- `:only`
 
 When a module with greater than `:if_nested_deeper_than` nested parts is referenced more than `:if_called_more_often_than` times, Quokka creates a new alias for that module and uses it.
 
