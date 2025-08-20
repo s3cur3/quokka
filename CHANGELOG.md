@@ -3,6 +3,20 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.11.0] - 2025-08-20
+
+### Improvements
+- Support `:only` config option for `Credo.Check.Design.AliasUsage`.
+- Rewrite multiple `Map.delete` to `Map.drop`.
+- Rewrite `&my_func(&1)` => `&my_func/1` where relevant.
+- Rewrite `Enum.filter(fun) |> List.first([default])` => `Enum.find([default], fun)`
+
+### Fixes 
+- Set default Elixir version as empty string for language server compatibility.
+- Do not dealias within moduledocs depending on the module layout order.
+- Properly autosort embedded schema.
+- Strict module layout styling fail for non-existent keys.
+
 ## [2.10.0] - 2025-07-29
 
 ### Improvements
