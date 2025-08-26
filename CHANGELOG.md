@@ -3,6 +3,12 @@
 Quokka follows [Semantic Versioning](https://semver.org) and
 [Common Changelog: Guiding Principles](https://common-changelog.org/#12-guiding-principles)
 
+## [2.11.1] - 2025-08-26
+
+### Fixes
+- Improved error handling
+- Handle rewriting anonymous function captures of variables
+
 ## [2.11.0] - 2025-08-20
 
 ### Improvements
