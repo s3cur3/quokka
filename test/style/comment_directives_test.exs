@@ -220,6 +220,25 @@ defmodule Quokka.Style.CommentDirectivesTest do
       )
     end
 
+    test "does not attempt to autosort schema fields passed through macros" do
+      Mimic.stub(Quokka.Config, :autosort, fn -> [:schema] end)
+
+      assert_style(
+        """
+        embedded_schema do
+          optional :number, :string
+          optional :principal, :boolean, default: false
+        end
+        """,
+        """
+        embedded_schema do
+          optional(:number, :string)
+          optional(:principal, :boolean, default: false)
+        end
+        """
+      )
+    end
+
     test "autosorts even after comment directive" do
       Mimic.stub(Quokka.Config, :autosort, fn -> [:schema] end)
 

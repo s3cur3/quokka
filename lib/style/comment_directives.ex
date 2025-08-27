@@ -270,12 +270,16 @@ defmodule Quokka.Style.CommentDirectives do
       |> numeric_aware_sort()
 
     sorted_fields =
-      sorted_groups
-      |> Enum.map(&Style.reset_newlines/1)
-      |> Enum.reduce(fn group, acc ->
-        acc ++ Style.reset_newlines(group)
-      end)
-      |> Kernel.++(other_fields)
+      if Enum.empty?(sorted_groups) do
+        other_fields
+      else
+        sorted_groups
+        |> Enum.map(&Style.reset_newlines/1)
+        |> Enum.reduce(fn group, acc ->
+          acc ++ Style.reset_newlines(group)
+        end)
+        |> Kernel.++(other_fields)
+      end
 
     Style.order_line_meta_and_comments(sorted_fields, comments, meta_line)
   end
