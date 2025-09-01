@@ -475,10 +475,15 @@ defmodule Quokka.Style.SingleNode do
     end
   end
 
-  # Rewrite &variable.(&1) to just the variable
-  defp style({:&, _meta, [{{:., _dot_meta, [{_var_name, _var_meta, _} = var]}, _fun_meta, [{:&, _, [arg_num]}]}]})
+  # Rewrite &variable.(&1) to just the variable when the first argument is
+  # a simple variable name, but not an anonymous function argument.
+  defp style({:&, meta, [{{:., dot_meta, [{var_name, _meta, _context} = var]}, fun_meta, [{:&, arg_meta, [arg_num]}]}]})
        when is_integer(arg_num) do
-    var
+    if is_atom(var_name) and not anonymous_arg?(var_name) do
+      var
+    else
+      {:&, meta, [{{:., dot_meta, [var]}, fun_meta, [{:&, arg_meta, [arg_num]}]}]}
+    end
   end
 
   defp style({:&, meta, [{fun, fun_meta, [{:&, _, [arg_num]}]}]} = node) when is_integer(arg_num) do
@@ -505,6 +510,15 @@ defmodule Quokka.Style.SingleNode do
   end
 
   defp style(node), do: node
+
+  # True when the name is something like :"&1" or :"&2"
+  defp anonymous_arg?(name) when is_atom(name) do
+    name
+    |> to_string()
+    |> String.starts_with?("&")
+  end
+
+  defp anonymous_arg?(_), do: false
 
   # Helper function to rewrite Repo.one calls in expressions
   defp rewrite_repo_one_in_conditional(ast) do
