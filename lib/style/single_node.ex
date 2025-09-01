@@ -477,6 +477,11 @@ defmodule Quokka.Style.SingleNode do
 
   # Rewrite &variable.(&1) to just the variable when the first argument is
   # a simple variable name, but not an anonymous function argument.
+  #
+  # Do this:
+  #   &some_variable.(&1) => some_variable
+  # But not:
+  #   & &1.(&2) => &1 (totally invalid syntax)
   defp style({:&, meta, [{{:., dot_meta, [{var_name, _meta, _context} = var]}, fun_meta, [{:&, arg_meta, [arg_num]}]}]})
        when is_integer(arg_num) do
     if is_atom(var_name) and not anonymous_arg?(var_name) do
