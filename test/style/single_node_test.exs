@@ -1280,6 +1280,7 @@ defmodule Quokka.Style.SingleNodeTest do
       assert_style("&func(&1 + 1)")
       assert_style("&func(some_arg, &1)")
       assert_style("&(&1 + &2)")
+      assert_style("& &1.(&2)")
     end
   end
 end
