@@ -1351,4 +1351,140 @@ defmodule Quokka.Style.SingleNodeTest do
       assert_style("& &1.(&2)")
     end
   end
+
+  describe "Enum.reduce rewrites" do
+    test "rewrites key counting to Enum.frequencies" do
+      assert_style(
+        """
+        Enum.reduce(keys, %{}, fn key, acc ->
+          current_count = Map.get(acc, key, 0)
+          Map.put(acc, key, current_count + 1)
+        end)
+        """,
+        """
+        Enum.frequencies(keys)
+        """
+      )
+
+      assert_style(
+        """
+        counts =
+          Enum.reduce(keys, %{}, fn key, acc ->
+            current_count = Map.get(acc, key, 0)
+            Map.put(acc, key, current_count + 1)
+          end)
+        """,
+        """
+        counts =
+          Enum.frequencies(keys)
+        """
+      )
+    end
+
+    test "rewrites to Enum.sum_by" do
+      assert_style(
+        """
+        total_count = Enum.reduce(results, 0, fn r, acc -> acc + r.count end)
+        """,
+        """
+        total_count = Enum.sum_by(results, & &1.count)
+        """
+      )
+
+      assert_style(
+        """
+        Enum.reduce(results, 0, fn r, acc -> acc + r.count end)
+        """,
+        """
+        Enum.sum_by(results, & &1.count)
+        """
+      )
+
+      assert_style(
+        """
+        Enum.reduce(results, 0, &(&1.count + &2))
+        """,
+        """
+        Enum.sum_by(results, & &1.count)
+        """
+      )
+
+      assert_style(
+        """
+        Enum.reduce(items, 0, fn item, acc ->
+          acc + item.quantity * item.cost
+        end)
+        """,
+        """
+        Enum.sum_by(items, &(&1.quantity * &1.cost))
+        """
+      )
+
+      assert_style(
+        """
+        Enum.reduce(items, 0, fn item, acc ->
+          acc + item.count_1 - item.count_2
+        end)
+        """,
+        """
+        Enum.sum_by(items, &(&1.count_1 - &1.count_2))
+        """
+      )
+
+      assert_style(
+        """
+        Enum.reduce(items, 0, fn item, acc ->
+          acc + length(item.things)
+        end)
+        """,
+        """
+        Enum.sum_by(items, &length(&1.things))
+        """
+      )
+    end
+
+    test "rewrites to Enum.sum_by from pipe" do
+      assert_style(
+        """
+        items
+        |> Enum.filter(& &1.active)
+        |> Enum.reduce(0, fn item, acc ->
+          acc + length(item.things)
+        end)
+        """,
+        """
+        items
+        |> Enum.filter(& &1.active)
+        |> Enum.sum_by(&length(&1.things))
+        """
+      )
+    end
+
+    test "does not rewrite more complicated Enum.reduce calls" do
+      assert_style("""
+      Enum.reduce(keys, %{}, fn key, acc ->
+        current_count = Map.get(acc, key, 0)
+        Map.put(acc, key, current_count * 2)
+      end)
+      """)
+
+      assert_style("""
+      Enum.reduce(keys, %{}, fn key, acc ->
+        current_count = Map.get(acc, key, 0)
+        Map.put(acc, key, current_count + 2)
+      end)
+      """)
+    end
+
+    test "respects inefficient_functions config" do
+      stub(Quokka.Config, :inefficient_function_rewrites?, fn -> false end)
+
+      assert_style("""
+      Enum.reduce(keys, %{}, fn key, acc ->
+        current_count = Map.get(acc, key, 0)
+        Map.put(acc, key, current_count + 1)
+      end)
+      """)
+    end
+  end
 end

@@ -540,6 +540,157 @@ defmodule Quokka.Style.SingleNode do
     end
   end
 
+  # Enum.reduce(enum, 0, fn element, acc -> acc + expression end)
+  # => Enum.sum_by(enum, & expression_with_&1)
+  defp style(
+         {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, fm,
+          [
+            enum,
+            {:__block__, _, [0]},
+            {:fn, _,
+             [
+               {:->, _,
+                [
+                  [{element, _, ctx} = _element_node, {acc, _, _}],
+                  body
+                ]}
+             ]}
+          ]} = node
+       )
+       when is_atom(element) and is_atom(acc) and is_atom(ctx) do
+    with true <- Quokka.Config.inefficient_function_rewrites?(),
+         {:ok, expr} <- extract_acc_from_sum(body, acc) do
+      line = dm[:line]
+      mapper_body = replace_var_with_capture(expr, element, line)
+      mapper = {:&, [line: line], [mapper_body]}
+      {{:., dm, [{:__aliases__, am, [:Enum]}, :sum_by]}, fm, [enum, mapper]}
+    else
+      _ -> node
+    end
+  end
+
+  # Enum.reduce(enum, 0, &(&1.field + &2))
+  # => Enum.sum_by(enum, & &1.field)
+  defp style(
+         {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, fm,
+          [
+            enum,
+            {:__block__, _, [0]},
+            {:&, _,
+             [
+               {:+, _,
+                [
+                  expr,
+                  {:&, _, [2]}
+                ]}
+             ]}
+          ]} = node
+       ) do
+    if Quokka.Config.inefficient_function_rewrites?() do
+      mapper = {:&, [line: dm[:line]], [expr]}
+      {{:., dm, [{:__aliases__, am, [:Enum]}, :sum_by]}, fm, [enum, mapper]}
+    else
+      node
+    end
+  end
+
+  # enum |> Enum.reduce(0, fn element, acc -> acc + expression end)
+  # => enum |> Enum.sum_by(& expression_with_&1)
+  defp style(
+         {:|>, pm,
+          [
+            lhs,
+            {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, fm,
+             [
+               {:__block__, _, [0]},
+               {:fn, _,
+                [
+                  {:->, _,
+                   [
+                     [{element, _, ctx} = _element_node, {acc, _, _}],
+                     body
+                   ]}
+                ]}
+             ]}
+          ]} = node
+       )
+       when is_atom(element) and is_atom(acc) and is_atom(ctx) do
+    with true <- Quokka.Config.inefficient_function_rewrites?(),
+         {:ok, expr} <- extract_acc_from_sum(body, acc) do
+      line = dm[:line]
+      mapper_body = replace_var_with_capture(expr, element, line)
+      mapper = {:&, [line: line], [mapper_body]}
+      {:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, [:Enum]}, :sum_by]}, fm, [mapper]}]}
+    else
+      _ -> node
+    end
+  end
+
+  # enum |> Enum.reduce(0, &(expr + &2))
+  # => enum |> Enum.sum_by(&expr)
+  defp style(
+         {:|>, pm,
+          [
+            lhs,
+            {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, fm,
+             [
+               {:__block__, _, [0]},
+               {:&, _,
+                [
+                  {:+, _,
+                   [
+                     expr,
+                     {:&, _, [2]}
+                   ]}
+                ]}
+             ]}
+          ]} = node
+       ) do
+    if Quokka.Config.inefficient_function_rewrites?() do
+      mapper = {:&, [line: dm[:line]], [expr]}
+      {:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, [:Enum]}, :sum_by]}, fm, [mapper]}]}
+    else
+      node
+    end
+  end
+
+  # Enum.reduce(enum, %{}, fn key, acc ->
+  #   count = Map.get(acc, key, 0)
+  #   Map.put(acc, key, count + 1)
+  # end)
+  # => Enum.frequencies(enum)
+  defp style(
+         {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, fm,
+          [
+            enum,
+            {:%{}, _, []},
+            {:fn, _,
+             [
+               {:->, _,
+                [
+                  [{key, _, _}, {acc, _, _}],
+                  {:__block__, _,
+                   [
+                     {:=, _,
+                      [
+                        {count, _, _},
+                        {{:., _, [{:__aliases__, _, [:Map]}, :get]}, _,
+                         [{acc, _, _}, {key, _, _}, {:__block__, _, [0]}]}
+                      ]},
+                     {{:., _, [{:__aliases__, _, [:Map]}, :put]}, _,
+                      [{acc, _, _}, {key, _, _}, {:+, _, [{count, _, _}, {:__block__, _, [1]}]}]}
+                   ]}
+                ]}
+             ]}
+          ]} = node
+       ) do
+    if Quokka.Config.inefficient_function_rewrites?() do
+      {{:., dm, [{:__aliases__, am, [:Enum]}, :frequencies]}, fm, [enum]}
+    else
+      node
+    end
+  end
+
   defp style(node), do: node
 
   # True when the name is something like :"&1" or :"&2"
@@ -550,6 +701,38 @@ defmodule Quokka.Style.SingleNode do
   end
 
   defp anonymous_arg?(_), do: false
+
+  # Extracts the non-accumulator expression from an arithmetic expression that sums into acc.
+  # For `acc + expr`, returns `{:ok, expr}`.
+  # For `(acc + a) - b`, returns `{:ok, a - b}` (since acc is added then b subtracted).
+  # Returns :error if acc is not found in a simple additive position.
+  defp extract_acc_from_sum({:+, _, [{acc, _, _}, expr]}, acc), do: {:ok, expr}
+  defp extract_acc_from_sum({:+, _, [expr, {acc, _, _}]}, acc), do: {:ok, expr}
+
+  defp extract_acc_from_sum({op, meta, [left, right]}, acc) when op in [:+, :-] do
+    case extract_acc_from_sum(left, acc) do
+      {:ok, left_without_acc} -> {:ok, {op, meta, [left_without_acc, right]}}
+      :error -> :error
+    end
+  end
+
+  defp extract_acc_from_sum(_, _acc), do: :error
+
+  # Replaces all occurrences of a variable with &1 capture syntax.
+  defp replace_var_with_capture({var_name, _, ctx}, var_name, line) when is_atom(ctx) do
+    {:&, [line: line], [1]}
+  end
+
+  defp replace_var_with_capture({form, meta, args}, var_name, line) when is_list(args) do
+    {replace_var_with_capture(form, var_name, line), meta,
+     Enum.map(args, &replace_var_with_capture(&1, var_name, line))}
+  end
+
+  defp replace_var_with_capture({left, right}, var_name, line) do
+    {replace_var_with_capture(left, var_name, line), replace_var_with_capture(right, var_name, line)}
+  end
+
+  defp replace_var_with_capture(node, _var_name, _line), do: node
 
   # Helper function to rewrite Repo.one calls in expressions
   defp rewrite_repo_one_in_conditional(ast) do
