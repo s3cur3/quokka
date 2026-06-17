@@ -5,6 +5,11 @@ Quokka follows [Semantic Versioning](https://semver.org) and
 
 ## [Unreleased]
 
+### Improvements
+
+- Fold a `Kernel` operator that starts a pipe back into an inline expression (e.g. `foo |> Kernel.||(bar) |> Enum.map(...)` becomes `(foo || bar) |> Enum.map(...)`). This applies to all `Kernel` infix/unary operators (`++`, `||`, `<>`, `/`, `-`, etc.), but only when the operator is the very first function in the pipe.
+- Fold a non-piped `Kernel` operator call back into an inline expression (e.g. `Kernel./(total, size)` becomes `total / size`, `Kernel.-(x)` becomes `-x`). This applies to all `Kernel` infix/unary operators, while operators in pipe position are left to the pipe-folding rewrite above.
+
 ### Fixes
 
 - Avoid `:deprecations` rules rewriting negative uses of `:timer.[units]/1` (`:timer.hours/1`, `:timer.minutes/1`, etc.). If there are negatives in literal values passed to `:timer.[units]/1`, we shouldn't rewrite it to use `to_timeout/1` since doing so will raise a runtime error (by definition, a timeout must be non-negative).
