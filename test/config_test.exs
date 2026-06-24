@@ -7,6 +7,7 @@ defmodule Quokka.ConfigTest do
 
   alias Credo.Check.Design.AliasUsage
   alias Credo.Check.Readability.MaxLineLength
+  alias Credo.Check.Refactor.FilterFilter
   alias Quokka.Style.Autosort
   alias Quokka.Style.CommentDirectives
   alias Quokka.Style.Configs
@@ -139,6 +140,22 @@ defmodule Quokka.ConfigTest do
     MapSet.member?(Quokka.Config.lift_alias_excluded_namespaces(), "Name2")
     # check that stdlib is included in the exclusions
     MapSet.member?(Quokka.Config.lift_alias_excluded_namespaces(), "File")
+  end
+
+  test "enables filter_filter? when Credo.Check.Refactor.FilterFilter is configured" do
+    Mimic.expect(Credo.ConfigFile, :read_or_default, fn _, _ ->
+      {:ok, %{checks: [{FilterFilter, []}]}}
+    end)
+
+    assert :ok = Quokka.Config.set!([])
+    assert Quokka.Config.filter_filter?()
+  end
+
+  test "filter_filter? defaults to false when the check is absent" do
+    Mimic.expect(Credo.ConfigFile, :read_or_default, fn _, _ -> {:ok, %{checks: []}} end)
+
+    assert :ok = Quokka.Config.set!([])
+    refute Quokka.Config.filter_filter?()
   end
 
   test "parses elixir version from mix.exs with different requirement formats" do
