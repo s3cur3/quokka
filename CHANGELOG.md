@@ -10,6 +10,7 @@ Quokka follows [Semantic Versioning](https://semver.org) and
 - Fold a `Kernel` operator that starts a pipe back into an inline expression (e.g. `foo |> Kernel.||(bar) |> Enum.map(...)` becomes `(foo || bar) |> Enum.map(...)`). This applies to all `Kernel` infix/unary operators (`++`, `||`, `<>`, `/`, `-`, etc.), but only when the operator is the very first function in the pipe.
 - Fold a non-piped `Kernel` operator call back into an inline expression (e.g. `Kernel./(total, size)` becomes `total / size`, `Kernel.-(x)` becomes `-x`). This applies to all `Kernel` infix/unary operators, while operators in pipe position are left to the pipe-folding rewrite above.
 - Add support for `Credo.Check.Refactor.FilterFilter`: consecutive `Enum.filter/2` (or `Stream.filter/2`) calls in a pipe are combined into a single filter. Two captures are joined with `&&` (e.g. `Enum.filter(&(&1.x > 0)) |> Enum.filter(&(&1.y < 0))` becomes `Enum.filter(&(&1.x > 0 && &1.y < 0))`); when an anonymous function is involved the predicates become an `if p1 do p2 else false end`. Enabled by adding the check to `.credo.exs`.
+- Added rewrite for `case` expressions that can be rewritten as `if`.
 
 ### Fixes
 
