@@ -765,6 +765,19 @@ defmodule Quokka.Style.BlocksTest do
         false -> :error
       end
       """)
+
+      assert_style("""
+      from(cb in CallBot, where: cb.ext_bot_id == ^id)
+      |> Repo.one()
+      |> case do
+        %{val: x} when x > 10 -> true
+        _ -> false
+      end
+      |> case do
+        true -> :ok
+        false -> :error
+      end
+      """)
     end
   end
 

@@ -451,7 +451,7 @@ defmodule Quokka.Style.Blocks do
   defp catch_all_clause_pattern?(_), do: false
 
   defp piping_case_into_case?({:case, _, _}), do: true
-  defp piping_case_into_case?({:|>, _, [lhs, _]}), do: piping_case_into_case?(lhs)
+  defp piping_case_into_case?({:|>, _, [lhs, rhs]}), do: piping_case_into_case?(lhs) or piping_case_into_case?(rhs)
   defp piping_case_into_case?(_), do: false
 
   # `foo |> bar?() |> case` becomes `if bar?(foo)`, but longer chains stay piped:
