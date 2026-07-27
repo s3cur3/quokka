@@ -509,7 +509,7 @@ defmodule Quokka.Style.ModuleDirectives do
           {:use, uses |> Enum.reverse() |> Style.reset_newlines()}
 
         {:alias, to_sort} ->
-          {:alias, to_sort |> sort(false) |> resolve_alias_dependencies()}
+          {:alias, to_sort |> disambiguate_aliases(acc.dealiases) |> sort(false)}
 
         {directive, to_sort} when directive in ~w(behaviour import require)a ->
           {directive, sort(to_sort, false)}
@@ -837,29 +837,15 @@ defmodule Quokka.Style.ModuleDirectives do
 
   defp sort_multi_children(other), do: other
 
-  # Sorting can reorder an alias ahead of another alias it depended on, silently changing its meaning (#179).
-  # Once sorted, we need to resolve each alias against the aliases that now precede it and re-sort,
-  # repeating until the list stops changing. Resolving only ever qualifies a path further (or leaves it be),
-  # so this converges.
-  defp resolve_alias_dependencies(aliases) do
-    resolved =
-      aliases
-      |> Enum.reduce({%{}, []}, fn ast, {env, acc} ->
-        ast = AliasEnv.dealias_directive(env, ast, disambiguate: true)
-        {AliasEnv.define(env, ast), [ast | acc]}
-      end)
-      |> elem(1)
-      |> Enum.reverse()
-      |> sort(false)
-
-    if same_aliases?(resolved, aliases),
-      do: aliases,
-      else: resolve_alias_dependencies(resolved)
-  end
-
-  # Compare by module path (metadata like line numbers shifts each pass and would never settle).
-  defp same_aliases?(a, b) do
-    Enum.map(a, &Macro.to_string/1) == Enum.map(b, &Macro.to_string/1)
+  # By the time we get here each alias has already been expanded to its full path against the aliases that
+  # preceded it in source order (e.g. `alias Foo.Bar` then `alias Bar.Baz` becomes `alias Foo.Bar.Baz`).
+  # Sorting can still reorder an alias ahead of another alias it depends on, silently changing its meaning:
+  # a top-level `B.E` written before `alias A.B` would resolve to `A.B.E` once sorted below it (#179).
+  # Resolving every alias against the *complete* alias environment (built from all of the module's aliases)
+  # makes each one independent of ordering: a path that would be reinterpreted gets `Elixir.`-prefixed, while
+  # already-unambiguous paths are left untouched.
+  defp disambiguate_aliases(aliases, env) do
+    Enum.map(aliases, &AliasEnv.dealias_directive(env, &1, disambiguate: true))
   end
 
   defp sort(directives, skip_sorting?) do

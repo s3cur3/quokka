@@ -67,6 +67,8 @@ defmodule Quokka.AliasEnv do
 
       expanded ->
         if Access.get(opts, :disambiguate, false) do
+          # After sorting, an alias like `B.E` can end up below `alias A.B` even though it was
+          # written first and meant top-level `B.E`. Prefix with `Elixir.` to preserve that meaning.
           disambiguate_or_keep(modules)
         else
           expanded
@@ -74,37 +76,38 @@ defmodule Quokka.AliasEnv do
     end
   end
 
-  # After sorting, an alias like `B.E` can end up below `alias A.B` even though it was written first and
-  # meant top-level `B.E`. Prefix with `Elixir.` to preserve that meaning. `D.D`-style paths are left
-  # alone since the repeated segment already pins the module path.
   defp disambiguate_or_keep([first | rest] = modules) when rest != [] and rest != [first], do: [:"Elixir" | modules]
   defp disambiguate_or_keep(modules), do: modules
 
-  # if the list of modules is itself already aliased, dealias it with the compound alias
-  # given:
-  #   alias Foo.Bar
-  #   Bar.Baz.Bop.baz()
-  #
-  # lifting Bar.Baz.Bop should result in:
-  #   alias Foo.Bar
-  #   alias Foo.Bar.Baz.Bop
-  #   Bop.baz()
   defp do_expand(env, [first | rest] = modules) do
-    case env[first] do
-      nil ->
+    cond do
+      # Non-atom segments (e.g. `__MODULE__`) can't be fed to Module.concat / Macro.Env.
+      not Enum.all?(modules, &is_atom/1) ->
         modules
 
-      # A self-referential alias (e.g. `alias Foo.Foo`, `as: Foo`) resolves its own leading segment
-      # back to a path that still begins with that segment. Appending a remainder to it would deepen
-      # the path without bound (`Foo.Foo.Bar` -> `Foo.Foo.Foo.Bar` -> ...) and never reach a
-      # fixpoint, and it also covers a redundant duplicate of the alias itself. In those cases treat
-      # the segment as top-level and leave the path alone. (Resolving the bare alias name, where
-      # there's no remainder, is still fine and idempotent.)
-      [^first | _] when rest != [] ->
+      # A self-referential alias (e.g. `alias Foo.Foo`, `alias A.A.A`) resolves its own leading segment
+      # back to a path that still begins with that segment. Appending a remainder would deepen the path
+      # (`Foo.Bar` → `Foo.Foo.Bar`, then again on later passes). Leave the path alone in that case.
+      # Resolving the bare alias name (no remainder) is still fine and goes through Macro.expand_literals.
+      rest != [] and match?([^first | _], env[first]) ->
         modules
 
-      dealias ->
-        dealias ++ rest
+      true ->
+        expand_with_macro(env, modules)
     end
+  end
+
+  # Uses Macro.expand_literals to apply the compiler's alias resolution rules, then convert the module atom back to segments.
+  defp expand_with_macro(env, modules) do
+    aliases =
+      env
+      |> Enum.filter(fn {_as, path} -> is_list(path) and Enum.all?(path, &is_atom/1) end)
+      |> Enum.map(fn {as, path} -> {Module.concat([as]), Module.concat(path)} end)
+
+    macro_env = %{__ENV__ | aliases: aliases, macro_aliases: []}
+
+    Macro.expand_literals({:__aliases__, [], modules}, macro_env)
+    |> Module.split()
+    |> Enum.map(&String.to_atom/1)
   end
 end

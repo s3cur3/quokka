@@ -256,6 +256,25 @@ defmodule Quokka.Style.ModuleDirectives.AliasLiftingTest do
     )
   end
 
+  test "copes with __MODULE__ aliases" do
+    assert_style(
+      """
+      defmodule A do
+        alias __MODULE__.B.C
+        alias __MODULE__
+        alias __MODULE__.B
+      end
+      """,
+      """
+      defmodule A do
+        alias __MODULE__
+        alias __MODULE__.B
+        alias __MODULE__.B.C
+      end
+      """
+    )
+  end
+
   test "only deploys new aliases in nodes _after_ the alias stanza" do
     assert_style(
       """

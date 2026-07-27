@@ -840,6 +840,23 @@ defmodule Quokka.Style.ModuleDirectivesTest do
       )
     end
 
+    test "expands dependent aliases before sorting (MyProj.Foo then Foo.Bar)" do
+      assert_style(
+        """
+        alias MyProj.Foo
+        alias MyProj.ZZyx
+        alias Foo.Bar
+        alias Bar.Baz
+        """,
+        """
+        alias MyProj.Foo
+        alias MyProj.Foo.Bar
+        alias MyProj.Foo.Bar.Baz
+        alias MyProj.ZZyx
+        """
+      )
+    end
+
     test "expands __MODULE__" do
       assert_style(
         """
