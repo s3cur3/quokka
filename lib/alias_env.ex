@@ -39,16 +39,81 @@ defmodule Quokka.AliasEnv do
     end)
   end
 
-  # if the list of modules is itself already aliased, dealias it with the compound alias
-  # given:
-  #   alias Foo.Bar
-  #   Bar.Baz.Bop.baz()
-  #
-  # lifting Bar.Baz.Bop should result in:
-  #   alias Foo.Bar
-  #   alias Foo.Bar.Baz.Bop
-  #   Bop.baz()
+  @doc """
+  Resolve just the leading module path of an `alias` directive against `env`.
+
+  Unlike `expand/2`, this only rewrites the alias's own module path (and, for brace-multi forms,
+  the namespace to the left of the `.{}`). Child segments of a `Foo.{Bar, Baz}` form are not
+  aliases in their own right, so they're left untouched.
+  """
+  def dealias_directive(env, ast, opts \\ [])
+  def dealias_directive(env, ast, _opts) when map_size(env) == 0, do: ast
+  def dealias_directive(_env, {:alias, m, [{:__aliases__, _, [Elixir | _]} = aliases]}, _), do: {:alias, m, [aliases]}
+
+  def dealias_directive(env, {:alias, m, [{:__aliases__, am, modules} | rest]}, opts) do
+    {:alias, m, [{:__aliases__, am, expand_alias_path(env, modules, opts)} | rest]}
+  end
+
+  def dealias_directive(env, {:alias, m, [{{:., dm, [{:__aliases__, nm, namespace}, :{}]}, cm, children}]}, opts) do
+    {:alias, m, [{{:., dm, [{:__aliases__, nm, expand_alias_path(env, namespace, opts)}, :{}]}, cm, children}]}
+  end
+
+  def dealias_directive(_env, ast, _opts), do: ast
+
+  defp expand_alias_path(env, modules, opts) do
+    case do_expand(env, modules) do
+      ^modules ->
+        modules
+
+      expanded ->
+        if Access.get(opts, :disambiguate, false) do
+          # After sorting, an alias like `B.E` can end up below `alias A.B` even though it was
+          # written first and meant top-level `B.E`. Prefix with `Elixir.` to preserve that meaning.
+          disambiguate_or_keep(modules)
+        else
+          expanded
+        end
+    end
+  end
+
+  defp disambiguate_or_keep([first | rest] = modules) when rest != [] and rest != [first], do: [:"Elixir" | modules]
+  defp disambiguate_or_keep(modules), do: modules
+
   defp do_expand(env, [first | rest] = modules) do
-    if dealias = env[first], do: dealias ++ rest, else: modules
+    cond do
+      # A bare alias resolving to itself (e.g. `alias Foo` giving env[Foo] == [Foo]) is already a
+      # no-op lookup. Short-circuit instead of calling Macro.expand_literals, which infinite-loops
+      # on this exact self-referential alias on Elixir 1.15.x.
+      env[first] == modules ->
+        modules
+
+      # Non-atom segments (e.g. `__MODULE__`) can't be fed to Module.concat / Macro.Env.
+      not Enum.all?(modules, &is_atom/1) ->
+        modules
+
+      # A self-referential alias (e.g. `alias Foo.Foo`, `alias A.A.A`) resolves its own leading segment
+      # back to a path that still begins with that segment. Appending a remainder would deepen the path
+      # (`Foo.Bar` → `Foo.Foo.Bar`, then again on later passes). Leave the path alone in that case.
+      # Resolving the bare alias name (no remainder) is still fine and goes through Macro.expand_literals.
+      rest != [] and match?([^first | _], env[first]) ->
+        modules
+
+      true ->
+        expand_with_macro(env, modules)
+    end
+  end
+
+  # Uses Macro.expand_literals to apply the compiler's alias resolution rules, then convert the module atom back to segments.
+  defp expand_with_macro(env, modules) do
+    aliases =
+      env
+      |> Enum.filter(fn {_as, path} -> is_list(path) and Enum.all?(path, &is_atom/1) end)
+      |> Enum.map(fn {as, path} -> {Module.concat([as]), Module.concat(path)} end)
+
+    macro_env = %{__ENV__ | aliases: aliases, macro_aliases: []}
+
+    Macro.expand_literals({:__aliases__, [], modules}, macro_env)
+    |> Module.split()
+    |> Enum.map(&String.to_atom/1)
   end
 end
