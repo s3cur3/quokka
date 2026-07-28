@@ -81,6 +81,12 @@ defmodule Quokka.AliasEnv do
 
   defp do_expand(env, [first | rest] = modules) do
     cond do
+      # A bare alias resolving to itself (e.g. `alias Foo` giving env[Foo] == [Foo]) is already a
+      # no-op lookup. Short-circuit instead of calling Macro.expand_literals, which infinite-loops
+      # on this exact self-referential alias on Elixir 1.15.x.
+      env[first] == modules ->
+        modules
+
       # Non-atom segments (e.g. `__MODULE__`) can't be fed to Module.concat / Macro.Env.
       not Enum.all?(modules, &is_atom/1) ->
         modules
