@@ -374,10 +374,14 @@ defmodule Quokka.Style.SingleNode do
     do: {reverse, r_meta, [lhs, rhs]}
 
   # `Enum.reduce(enum, 0, fn x, acc -> x + acc end)` => `Enum.sum(enum)`
-  defp style({{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, m, [enum, {:__block__, _, [0]}, reducer]} = node) do
-    if Quokka.Config.inefficient_function_rewrites?() and sum_reducer?(reducer),
-      do: {{:., dm, [{:__aliases__, am, [:Enum]}, :sum]}, m, [enum]},
-      else: node
+  # Also folds richer reducers into the purpose-built `Enum`/`Map` function the reduction is really
+  # performing (`Enum.sum_by`, `Enum.product_by`, `Map.new`, `Enum.count`, `Enum.map`)
+  defp style({{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, m, [enum, init, reducer]} = node) do
+    case reduce_rewrite(init, reducer) do
+      :sum -> {{:., dm, [{:__aliases__, am, [:Enum]}, :sum]}, m, [enum]}
+      {module, name, new_reducer} -> {{:., dm, [{:__aliases__, am, module}, name]}, m, [enum, new_reducer]}
+      :none -> node
+    end
   end
 
   # `Enum.reduce(enum, fn x, acc -> x + acc end)` => `Enum.sum(enum)`
@@ -390,12 +394,13 @@ defmodule Quokka.Style.SingleNode do
   end
 
   # `enum |> Enum.reduce(0, fn x, acc -> x + acc end)` => `enum |> Enum.sum()`
-  defp style(
-         {:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, m, [{:__block__, _, [0]}, reducer]}]} = node
-       ) do
-    if Quokka.Config.inefficient_function_rewrites?() and sum_reducer?(reducer),
-      do: {:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, [:Enum]}, :sum]}, m, []}]},
-      else: node
+  # Also folds the richer reducers handled by `simplify_reduce/2` (see the non-piped clause above).
+  defp style({:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, [:Enum]}, :reduce]}, m, [init, reducer]}]} = node) do
+    case reduce_rewrite(init, reducer) do
+      :sum -> {:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, [:Enum]}, :sum]}, m, []}]}
+      {module, name, new_reducer} -> {:|>, pm, [lhs, {{:., dm, [{:__aliases__, am, module}, name]}, m, [new_reducer]}]}
+      :none -> node
+    end
   end
 
   # `enum |> Enum.reduce(fn x, acc -> x + acc end)` => `enum |> Enum.sum()`
@@ -743,6 +748,165 @@ defmodule Quokka.Style.SingleNode do
     do: true
 
   defp sum_reducer?(_), do: false
+
+  # Replace `Enum.reduce/3` whose reducer is an explicit `fn item, acc -> ... end` with a `Enum`/`Map` function
+  defp simplify_reduce(init, {:fn, fn_meta, [{:->, arrow_meta, [[item, {acc, _, nil}], body]}]})
+       when is_atom(acc) and acc != :_ do
+    {stmts, last} = split_reduce_body(body)
+
+    if !references_var?(stmts, acc) do
+      rebuild = fn new_last -> {:fn, fn_meta, [{:->, arrow_meta, [[item], join_reduce_body(stmts, new_last)]}]} end
+      classify_reduce(init, item, acc, stmts, last, rebuild)
+    end
+  end
+
+  defp simplify_reduce(_init, _reducer), do: nil
+
+  defp reduce_rewrite(init, reducer) do
+    cond do
+      not Quokka.Config.inefficient_function_rewrites?() ->
+        :none
+
+      match?({:__block__, _, [0]}, init) and sum_reducer?(reducer) ->
+        :sum
+
+      simplified = simplify_reduce(init, reducer) ->
+        {{module, name}, new_reducer} = simplified
+        {module, name, new_reducer}
+
+      true ->
+        :none
+    end
+  end
+
+  # `Enum.reduce(enum, 0, fn item, acc -> acc + expr end)` => `Enum.sum_by(enum, fn item -> expr end)`
+  # `Enum.reduce(enum, 1, fn item, acc -> acc * expr end)` => `Enum.product_by(enum, fn item -> expr end)`
+  defp classify_reduce(init, item, acc, _stmts, {op, _, [a, b]}, rebuild) when op in [:+, :*] do
+    {identity, enum_fn_name} = if op == :+, do: {0, :sum_by}, else: {1, :product_by}
+
+    with true <- sum_product_by_available?(),
+         true <- literal?(init, identity),
+         {:ok, expr} <- extract_non_accumulator_operand(a, b, acc),
+         false <- same_variable?(expr, item),
+         false <- literal_constant?(expr) do
+      {{[:Enum], enum_fn_name}, rebuild.(expr)}
+    else
+      _ -> nil
+    end
+  end
+
+  # `Enum.reduce(enum, %{}, fn item, acc -> Map.put(acc, k, v) end)` => `Map.new(enum, fn item -> {k, v} end)`
+  defp classify_reduce(
+         init,
+         _item,
+         acc,
+         _stmts,
+         {{:., _, [{:__aliases__, _, [:Map]}, :put]}, call_meta, [{acc, _, nil}, key, value]},
+         rebuild
+       ) do
+    with true <- map_empty?(init),
+         false <- references_var?(key, acc),
+         false <- references_var?(value, acc) do
+      {{[:Map], :new}, rebuild.({:__block__, call_meta, [{key, value}]})}
+    else
+      _ -> nil
+    end
+  end
+
+  # `Enum.reduce(enum, 0, fn item, acc -> if cond, do: acc + 1, else: acc end)`
+  #   => `Enum.count(enum, fn item -> cond end)`
+  defp classify_reduce(init, _item, acc, _stmts, {:if, _, [condition, branches]}, rebuild) do
+    with true <- literal?(init, 0),
+         false <- references_var?(condition, acc),
+         true <- counts_by_one?(branches, acc) do
+      {{[:Enum], :count}, rebuild.(condition)}
+    else
+      _ -> nil
+    end
+  end
+
+  # `Enum.reduce(enum, [], fn item, acc -> acc ++ [expr] end)` => `Enum.map(enum, fn item -> expr end)`
+  # Only the order-preserving append form; `[expr | acc]` needs an external `Enum.reverse` and is left alone.
+  defp classify_reduce(init, _item, acc, _stmts, {:++, _, [{acc, _, nil}, appended]}, rebuild) do
+    with true <- literal?(init, []),
+         {:ok, expr} <- single_element(appended),
+         false <- references_var?(expr, acc) do
+      {{[:Enum], :map}, rebuild.(expr)}
+    else
+      _ -> nil
+    end
+  end
+
+  defp classify_reduce(_init, _item, _acc, _stmts, _last, _rebuild), do: nil
+
+  defp split_reduce_body({:__block__, _, statements}) when length(statements) > 1 do
+    {Enum.drop(statements, -1), List.last(statements)}
+  end
+
+  defp split_reduce_body(expression), do: {[], expression}
+
+  defp join_reduce_body([], last), do: last
+  defp join_reduce_body(statements, last), do: {:__block__, [], statements ++ [last]}
+
+  defp extract_non_accumulator_operand({acc, _, nil}, other, acc) do
+    if references_var?(other, acc), do: :error, else: {:ok, other}
+  end
+
+  defp extract_non_accumulator_operand(other, {acc, _, nil}, acc) do
+    if references_var?(other, acc), do: :error, else: {:ok, other}
+  end
+
+  defp extract_non_accumulator_operand(_a, _b, _acc), do: :error
+
+  defp counts_by_one?([{{:__block__, _, [:do]}, do_branch}, {{:__block__, _, [:else]}, else_branch}], acc) do
+    increments_by_one?(do_branch, acc) and match?({^acc, _, nil}, else_branch)
+  end
+
+  defp counts_by_one?(_branches, _acc), do: false
+
+  defp increments_by_one?({:+, _, [{acc, _, nil}, {:__block__, _, [1]}]}, acc), do: true
+  defp increments_by_one?({:+, _, [{:__block__, _, [1]}, {acc, _, nil}]}, acc), do: true
+  defp increments_by_one?(_branch, _acc), do: false
+
+  defp single_element({:__block__, _, [[element]]}), do: {:ok, element}
+  defp single_element(_appended), do: :error
+
+  defp literal?({:__block__, _, [value]}, value), do: true
+  defp literal?(_node, _value), do: false
+
+  defp map_empty?({:%{}, _, []}), do: true
+  defp map_empty?(_node), do: false
+
+  defp same_variable?({name, _, context1}, {name, _, context2})
+       when is_atom(name) and is_atom(context1) and is_atom(context2), do: true
+
+  defp same_variable?(_a, _b), do: false
+
+  defp literal_constant?({:__block__, _, [_value]}), do: true
+  defp literal_constant?(_expr), do: false
+
+  defp sum_product_by_available?() do
+    Version.match?(Quokka.Config.elixir_version(), ">= 1.18.0-dev")
+  end
+
+  # Recursively checks whether `var` is referenced anywhere in the AST.
+  defp references_var?({var, _, context}, var) when is_atom(context), do: true
+
+  # Shortcut when we know we can skip `meta` and don't want to iterate over it in
+  # `when is_list(ast)`
+  defp references_var?({head, _meta, args}, var) do
+    references_var?(head, var) or references_var?(args, var)
+  end
+
+  defp references_var?(ast, var) when is_tuple(ast) do
+    ast |> Tuple.to_list() |> references_var?(var)
+  end
+
+  defp references_var?(ast, var) when is_list(ast) do
+    Enum.any?(ast, &references_var?(&1, var))
+  end
+
+  defp references_var?(_ast, _var), do: false
 
   defp replace_into({:., dm, [{_, am, _} = enum, _]}, collectable, rest) do
     case Quokka.Config.inefficient_function_rewrites?() and collectable do

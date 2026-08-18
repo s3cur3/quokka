@@ -213,6 +213,7 @@ Beyond Credo-inspired checks, Quokka provides additional style improvements:
 | Feature | Description | Documentation |
 |---------|-------------|---------------|
 | Test Styling | Rewrites tests to be efficent and idiomatic | [Test Assertions](docs/tests.md) |
+| Unnecessary reduces | Rewrites eligible `Enum.reduce/3` calls to `Map.new/2` or appropriate function from `Enum` module. | [`Enum.reduce` rewrites](docs/styles.md#enumreduce-rewrites-to-purpose-built-functions) |
 
 ## Custom rewrites
 

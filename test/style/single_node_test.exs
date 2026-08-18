@@ -1537,6 +1537,223 @@ defmodule Quokka.Style.SingleNodeTest do
     end
   end
 
+  describe "Enum.reduce => Enum.sum_by/product_by" do
+    setup do
+      stub(Quokka.Config, :elixir_version, fn -> "1.18.0" end)
+      :ok
+    end
+
+    test "rewrites acc + expr into Enum.sum_by" do
+      assert_style(
+        "Enum.reduce(items, 0, fn item, acc -> acc + item.count end)",
+        "Enum.sum_by(items, fn item -> item.count end)"
+      )
+    end
+
+    test "rewrites acc + expr into Enum.sum_by with more complex expression" do
+      assert_style(
+        "Enum.reduce(items, 0, fn item, acc -> acc + (item[\"amount\"] || 0) end)",
+        "Enum.sum_by(items, fn item -> item[\"amount\"] || 0 end)"
+      )
+    end
+
+    test "rewrites expr + acc into Enum.sum_by" do
+      assert_style(
+        "Enum.reduce(items, 0, fn item, acc -> item.count + acc end)",
+        "Enum.sum_by(items, fn item -> item.count end)"
+      )
+    end
+
+    test "rewrites the piped form" do
+      assert_style(
+        "items |> Enum.reduce(0, fn item, acc -> acc + item.count end)",
+        "items |> Enum.sum_by(fn item -> item.count end)"
+      )
+    end
+
+    test "rewrites acc * expr into Enum.product_by" do
+      assert_style(
+        "Enum.reduce(items, 1, fn item, acc -> acc * item.n end)",
+        "Enum.product_by(items, fn item -> item.n end)"
+      )
+    end
+
+    test "preserves preceding statements and drops the accumulator" do
+      assert_style(
+        """
+        Enum.reduce(ids, 0, fn id, acc ->
+          {:ok, c} = fetch(id)
+          acc + c
+        end)
+        """,
+        """
+        Enum.sum_by(ids, fn id ->
+          {:ok, c} = fetch(id)
+          c
+        end)
+        """
+      )
+    end
+
+    test "leaves the bare acc + item case for the Enum.sum rewrite" do
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc + item end)", "Enum.sum(items)")
+    end
+
+    test "leaves a non-identity initial value untouched" do
+      assert_style("Enum.reduce(items, 5, fn item, acc -> acc + item.count end)")
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc * item.n end)")
+    end
+
+    test "leaves an expression that references the accumulator" do
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc + acc end)")
+    end
+
+    test "leaves subtraction untouched" do
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc - item.count end)")
+    end
+
+    test "leaves reductions untouched before Elixir 1.18" do
+      stub(Quokka.Config, :elixir_version, fn -> "1.17.3" end)
+
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc + item.count end)")
+      assert_style("items |> Enum.reduce(1, fn item, acc -> acc * item.n end)")
+    end
+  end
+
+  describe "Enum.reduce => Map.new" do
+    test "rewrites an empty-map accumulator built with Map.put" do
+      assert_style(
+        "Enum.reduce(items, %{}, fn item, acc -> Map.put(acc, item.k, item.v) end)",
+        "Map.new(items, fn item -> {item.k, item.v} end)"
+      )
+    end
+
+    test "rewrites the piped form" do
+      assert_style(
+        "list |> Enum.reduce(%{}, fn x, acc -> Map.put(acc, x.id, x) end)",
+        "list |> Map.new(fn x -> {x.id, x} end)"
+      )
+    end
+
+    test "emits valid tuple AST when the reduction is nested in a map value" do
+      assert_style(
+        """
+        %{
+          type: "array",
+          items:
+            fields
+            |> Enum.reduce(%{}, fn field, items ->
+              Map.put(items, field.name, field_spec(field, opts))
+            end)
+        }
+        """,
+        """
+        %{
+          type: "array",
+          items:
+            fields
+            |> Map.new(fn field ->
+              {field.name, field_spec(field, opts)}
+            end)
+        }
+        """
+      )
+    end
+
+    test "leaves a frequency counter whose value reads the accumulator" do
+      assert_style("Enum.reduce(items, %{}, fn item, acc -> Map.put(acc, item.k, Map.get(acc, item.k, 0) + 1) end)")
+    end
+
+    test "leaves a conditional Map.put (a filter/reject shape)" do
+      assert_style(
+        "Enum.reduce(items, %{}, fn item, acc -> if item.ok?, do: Map.put(acc, item.k, item.v), else: acc end)"
+      )
+    end
+
+    test "leaves a non-empty initial map untouched" do
+      assert_style("Enum.reduce(items, %{a: 1}, fn item, acc -> Map.put(acc, item.k, item.v) end)")
+    end
+  end
+
+  describe "Enum.reduce => Enum.count" do
+    test "rewrites an if that increments by one" do
+      assert_style(
+        "Enum.reduce(items, 0, fn item, acc -> if item.ok?, do: acc + 1, else: acc end)",
+        "Enum.count(items, fn item -> item.ok? end)"
+      )
+    end
+
+    test "leaves an increment by more than one" do
+      assert_style("Enum.reduce(items, 0, fn item, acc -> if item.ok?, do: acc + 2, else: acc end)")
+    end
+
+    test "leaves the unconditional acc + 1 form" do
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc + 1 end)")
+    end
+  end
+
+  describe "Enum.reduce with boolean operators" do
+    test "leaves ||, or, &&, and reductions untouched" do
+      assert_style("Enum.reduce(items, false, fn item, acc -> acc || item.ok? end)")
+      assert_style("Enum.reduce(items, false, fn item, acc -> acc or item.ok? end)")
+      assert_style("Enum.reduce(items, true, fn item, acc -> acc && item.ok? end)")
+      assert_style("Enum.reduce(items, true, fn item, acc -> acc and item.ok? end)")
+    end
+
+    test "preserves the reducer's non-boolean return value" do
+      assert_style("Enum.reduce([:truthy], false, fn item, acc -> acc || item end)")
+    end
+
+    test "preserves full traversal of streams" do
+      assert_style("Enum.reduce(Stream.map(items, &tap/1), false, fn item, acc -> acc || item.ok? end)")
+    end
+
+    test "preserves reducer pattern matching for every item" do
+      assert_style("Enum.reduce(items, false, fn %{ok?: ok?}, acc -> acc || ok? end)")
+    end
+  end
+
+  describe "Enum.reduce => Enum.map" do
+    test "rewrites the order-preserving acc ++ [expr] append form" do
+      assert_style(
+        "Enum.reduce(items, [], fn item, acc -> acc ++ [item.name] end)",
+        "Enum.map(items, fn item -> item.name end)"
+      )
+    end
+
+    test "leaves the [expr | acc] prepend form (needs an external Enum.reverse)" do
+      assert_style("Enum.reduce(items, [], fn item, acc -> [item.name | acc] end)")
+    end
+
+    test "leaves a multi-element append (a flat_map shape)" do
+      assert_style("Enum.reduce(items, [], fn item, acc -> acc ++ [item.a, item.b] end)")
+    end
+  end
+
+  describe "Enum.reduce simplifications leave non-simplifiable reduces alone" do
+    test "reducer captured as a function reference" do
+      assert_style("Enum.reduce(items, %{}, &handle/2)")
+    end
+
+    test "reducer with an accumulator pattern instead of a plain variable" do
+      assert_style("Enum.reduce(items, {[], []}, fn item, {a, b} -> {[item | a], b} end)")
+    end
+
+    test "respects inefficient_functions config" do
+      stub(Quokka.Config, :elixir_version, fn -> "1.18.0" end)
+      stub(Quokka.Config, :inefficient_function_rewrites?, fn -> false end)
+      assert_style("Enum.reduce(items, 0, fn item, acc -> acc + item.count end)")
+      assert_style("Enum.reduce(items, %{}, fn item, acc -> Map.put(acc, item.k, item.v) end)")
+
+      stub(Quokka.Config, :inefficient_function_rewrites?, fn -> true end)
+
+      assert_style(
+        "Enum.reduce(items, 0, fn item, acc -> acc + item.count end)",
+        "Enum.sum_by(items, fn item -> item.count end)"
+      )
+    end
+  end
+
   describe "String.starts_with?/ends_with?/contains? or-chains => list form" do
     test "combines two single-string checks" do
       for function <- [:starts_with?, :ends_with?, :contains?] do

@@ -227,21 +227,26 @@ baz |> Enum.reverse() |> Enum.concat(bop)
 Enum.reverse(baz, bop)
 ```
 
-### `Enum.reduce` summing -> `Enum.sum`
+### `Enum.reduce` rewrites to purpose-built functions
 
 Quokka rewrites `Enum.reduce/2,3` calls whose reducer simply adds the two arguments to `Enum.sum/1`. This covers anonymous functions (with operands in either order), `&(&1 + &2)` captures, and `&+/2` / `&Kernel.+/2` captures. For `Enum.reduce/3`, the accumulator must be the literal integer `0` (so `0.0` is left alone to preserve float typing on empty enums). This holds in pipe position too: `enum |> Enum.reduce(acc, &+/2)` with a non-zero accumulator is left unchanged.
 
-```elixir
-# Before
-Enum.reduce(enum, 0, fn x, acc -> x + acc end)
-# Styled
-Enum.sum(enum)
+Quokka also recognizes several `Enum.reduce/3` patterns that have clearer,
+purpose-built equivalents:
 
-# Before
-string |> String.to_charlist() |> Enum.reduce(0, &(&1 + &2))
-# Styled
-string |> String.to_charlist() |> Enum.sum()
-```
+| Before                                                                                              | After                                                   | Elixir Version |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------- |
+| `Enum.reduce(enum, 0, fn x, acc -> x + acc end)`                                                    | `Enum.sum(enum)`                                        | 1.15+          |
+| `string \|> String.to_charlist() \|> Enum.reduce(0, &(&1 + &2))`                                    | `string \|> String.to_charlist() \|> Enum.sum()`       | 1.15+          |
+| `Enum.reduce(items, 0, fn item, acc -> acc + item.count end)`                                       | `Enum.sum_by(items, fn item -> item.count end)`         | 1.18+          |
+| `Enum.reduce(items, 1, fn item, acc -> acc * item.quantity end)`                                    | `Enum.product_by(items, fn item -> item.quantity end)`  | 1.18+          |
+| `Enum.reduce(items, %{}, fn item, acc -> Map.put(acc, item.id, item) end)`                           | `Map.new(items, fn item -> {item.id, item} end)`        | 1.15+          |
+| `Enum.reduce(items, 0, fn item, acc -> if item.active?, do: acc + 1, else: acc end)`                 | `Enum.count(items, fn item -> item.active? end)`        | 1.15+          |
+| `Enum.reduce(items, [], fn item, acc -> acc ++ [item.name] end)`                                    | `Enum.map(items, fn item -> item.name end)`             | 1.15+          |
+
+The initial accumulator must be the identity value shown above, and the
+replacement is only made when the reducer does not otherwise depend on the
+accumulator. Piped forms are supported as well.
 
 ### `Timex.now/0` ->` DateTime.utc_now/0` and `Timex.today/0` -> `Date.utc_today/0`
 
