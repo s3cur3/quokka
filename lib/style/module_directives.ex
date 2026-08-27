@@ -509,7 +509,7 @@ defmodule Quokka.Style.ModuleDirectives do
           {:use, uses |> Enum.reverse() |> Style.reset_newlines()}
 
         {:alias, to_sort} ->
-          {:alias, to_sort |> disambiguate_aliases(acc.dealiases) |> sort(false)}
+          {:alias, to_sort |> disambiguate_aliases() |> Style.reset_newlines()}
 
         {directive, to_sort} when directive in ~w(behaviour import require)a ->
           {directive, sort(to_sort, false)}
@@ -845,13 +845,27 @@ defmodule Quokka.Style.ModuleDirectives do
 
   # By the time we get here each alias has already been expanded to its full path against the aliases that
   # preceded it in source order (e.g. `alias Foo.Bar` then `alias Bar.Baz` becomes `alias Foo.Bar.Baz`).
-  # Sorting can still reorder an alias ahead of another alias it depends on, silently changing its meaning:
+  # However, sorting can still reorder an alias ahead of another alias it depends on, silently changing its meaning:
   # a top-level `B.E` written before `alias A.B` would resolve to `A.B.E` once sorted below it (#179).
-  # Resolving every alias against the *complete* alias environment (built from all of the module's aliases)
-  # makes each one independent of ordering: a path that would be reinterpreted gets `Elixir.`-prefixed, while
-  # already-unambiguous paths are left untouched.
-  defp disambiguate_aliases(aliases, env) do
-    Enum.map(aliases, &AliasEnv.dealias_directive(env, &1, disambiguate: true))
+  # So we sort first, then resolve each alias against only the aliases sorted *ahead* of it; a path whose
+  # meaning would change at its final position gets `Elixir.`-prefixed, while paths that still sort ahead
+  # of the alias that shadows their first segment are left untouched. Prefixing changes an alias's sort key,
+  # so we re-sort and repeat until nothing new needs disambiguating (each pass permanently prefixes at
+  # least one alias, so this is guaranteed to terminate).
+  defp disambiguate_aliases(aliases) do
+    sorted = sort_terms(aliases)
+
+    {disambiguated, _env} =
+      Enum.map_reduce(sorted, %{}, fn ast, env ->
+        ast = AliasEnv.dealias_directive(env, ast, disambiguate: true)
+        {ast, AliasEnv.define(env, ast)}
+      end)
+
+    if disambiguated == sorted do
+      sorted
+    else
+      disambiguate_aliases(disambiguated)
+    end
   end
 
   defp sort(directives, skip_sorting?) do

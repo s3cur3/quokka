@@ -840,6 +840,16 @@ defmodule Quokka.Style.ModuleDirectivesTest do
       )
     end
 
+    test "doesn't add an Elixir. prefix to an alias that sorts ahead of the alias shadowing its first segment" do
+      # `alias MyApp.Models.Money` makes `Money` mean `MyApp.Models.Money` — but only for aliases
+      # written *after* it. `Money.Currency` sorts ahead of `MyApp.Models.Money`, so its leading
+      # `Money` still refers to the top-level `Money` module and needs no `Elixir.` disambiguation.
+      assert_style("""
+      alias Money.Currency
+      alias MyApp.Models.Money
+      """)
+    end
+
     test "expands dependent aliases before sorting (MyProj.Foo then Foo.Bar)" do
       assert_style(
         """
