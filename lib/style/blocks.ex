@@ -80,30 +80,8 @@ defmodule Quokka.Style.Blocks do
       line: m[:line]
     ]
 
-    # recurse in case this new case should be rewritten to a `if`, etc
+    # recurse in case this new case should be rewritten further
     run({{:case, case_meta, [single_statement, clauses]}, zm}, ctx)
-  end
-
-  # `with true <- x, do: bar` =>`if x, do: bar`
-  def run({{:with, m, [{:<-, _, [{_, _, [true]}, rhs]}, [do_kwl]]}, _} = zipper, ctx) do
-    children =
-      case rhs do
-        # `true <- foo || {:error, :shouldve_used_an_if_statement}``
-        # turn the rhs of an `||` into an else body
-        {:||, _, [head, else_body]} ->
-          [
-            head,
-            [
-              do_kwl,
-              {{:__block__, [line: m[:line] + 2], [:else]}, Style.shift_line(else_body, 3)}
-            ]
-          ]
-
-        _ ->
-          [rhs, [do_kwl]]
-      end
-
-    {:cont, Zipper.replace(zipper, {:if, m, children}), ctx}
   end
 
   # Credo.Check.Refactor.WithClauses

@@ -196,6 +196,36 @@ defmodule Quokka.Style.BlocksTest do
       )
     end
 
+    test "does not rewrite `with true <- x` to `if` (but may use `case` if there's a catch-all `else` clause)" do
+      # #187: `with true <- x, do: y` returns `x` on mismatch, so it is *not* equivalent to `if x, do: y`.
+      assert_style("with true <- x, do: :bar")
+
+      assert_style("""
+      with true <- x do
+        :bar
+      end
+      """)
+
+      assert_style("with true <- foo || {:error, :reason}, do: :bar")
+
+      # A `with` that has an `else` is still rewritten to `case`, which is equivalent
+      assert_style(
+        """
+        with true <- x do
+          :bar
+        else
+          _ -> :error
+        end
+        """,
+        """
+        case x do
+          true -> :bar
+          _ -> :error
+        end
+        """
+      )
+    end
+
     test "Credo.Check.Readability.WithSingleClause" do
       assert_style(
         """

@@ -240,22 +240,4 @@ case foo do
 end
 ```
 
-### Replace with `if`
-
-Given Quokka rewrites trivial `case` to `if`, it shouldn't be a surprise that that same rule means that `with` can be rewritten to `if` in some cases.
-
-```elixir
-# Given:
-with true <- foo(), bar <- baz() do
-  {:ok, bar}
-else
-  _ -> :error
-end
-# Styled:
-if foo() do
-  bar = baz()
-  {:ok, bar}
-else
-  :error
-end
-```
+Of course, Quokka must *not* rewrite `with true <- x, do: body` (lacking a catch-all `else` clause) to `if x, do: body`, since the change is not equivalent: `with true <- x` returns `x` when the match fails (including for `false` and non-boolean truthy values), while `if` treats the head as truthy/falsey and returns `nil` when the condition is false.
