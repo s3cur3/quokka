@@ -2307,10 +2307,16 @@ defmodule Quokka.Style.PipesTest do
     end
 
     test "preserves an existing `and` inside a combined capture" do
-      assert_style(
-        "a |> Enum.filter(&(&1 > 0 and &1 < 10)) |> Enum.filter(&(&1 != 5)) |> bar()",
-        "a |> Enum.filter(&((&1 > 0 and &1 < 10) && &1 != 5)) |> bar()"
-      )
+      # `and` and `&&` share precedence, so both outputs are equivalent; the formatter only
+      # started parenthesizing mixed logical operators in Elixir 1.18
+      expected =
+        if Version.match?(System.version(), ">= 1.18.0-dev") do
+          "a |> Enum.filter(&((&1 > 0 and &1 < 10) && &1 != 5)) |> bar()"
+        else
+          "a |> Enum.filter(&(&1 > 0 and &1 < 10 && &1 != 5)) |> bar()"
+        end
+
+      assert_style("a |> Enum.filter(&(&1 > 0 and &1 < 10)) |> Enum.filter(&(&1 != 5)) |> bar()", expected)
     end
 
     test "combines Stream.filter chains too" do
