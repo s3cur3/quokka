@@ -2267,6 +2267,38 @@ defmodule Quokka.Style.PipesTest do
       )
     end
 
+    test "combines anonymous functions with a false branch that has line metadata" do
+      assert_style(
+        "a |> Enum.filter(fn x -> x.active end) |> Enum.filter(fn x -> x.score > 5 end)",
+        """
+        Enum.filter(a, fn x ->
+          if x.active do
+            x.score > 5
+          else
+            false
+          end
+        end)
+        """
+      )
+
+      assert_style(
+        """
+        items
+        |> Enum.filter(fn x -> x.active end)
+        |> Enum.filter(&(&1.score > 5))
+        """,
+        """
+        Enum.filter(items, fn x ->
+          if x.active do
+            x.score > 5
+          else
+            false
+          end
+        end)
+        """
+      )
+    end
+
     test "unpipes the resulting single filter" do
       assert_style(
         "a |> Enum.filter(&(&1 > 1)) |> Enum.filter(&(&1 < 10))",
